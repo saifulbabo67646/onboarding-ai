@@ -36,3 +36,9 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# Python
+agent/venv/
+agent/.env
+__pycache__/
+*.pyc

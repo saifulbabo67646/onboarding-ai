@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { decodePassphrase } from '@/lib/client-utils';
+import { BrowserStream } from '@/lib/BrowserStream';
 import { DebugMode } from '@/lib/Debug';
 import { KeyboardShortcuts } from '@/lib/KeyboardShortcuts';
 import { RecordingIndicator } from '@/lib/RecordingIndicator';
@@ -80,6 +81,7 @@ export function PageClientImpl(props: {
         </div>
       ) : (
         <VideoConferenceComponent
+          roomName={props.roomName}
           connectionDetails={connectionDetails}
           userChoices={preJoinChoices}
           options={{ codec: props.codec, hq: props.hq }}
@@ -90,6 +92,7 @@ export function PageClientImpl(props: {
 }
 
 function VideoConferenceComponent(props: {
+  roomName: string;
   userChoices: LocalUserChoices;
   connectionDetails: ConnectionDetails;
   options: {
@@ -218,16 +221,23 @@ function VideoConferenceComponent(props: {
   }, [lowPowerMode]);
 
   return (
-    <div className="lk-room-container">
-      <RoomContext.Provider value={room}>
-        <KeyboardShortcuts />
-        <VideoConference
-          chatMessageFormatter={formatChatMessageLinks}
-          SettingsComponent={SHOW_SETTINGS_MENU ? SettingsMenu : undefined}
-        />
-        <DebugMode />
-        <RecordingIndicator />
-      </RoomContext.Provider>
+    <div style={{ display: 'flex', height: '100%', width: '100%' }}>
+      {/* Browser stream panel — shows agent-browser viewport */}
+      <div style={{ flex: '1 1 60%', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <BrowserStream roomName={props.roomName} />
+      </div>
+      {/* Meeting panel — LiveKit voice/video */}
+      <div className="lk-room-container" style={{ flex: '1 1 40%', minWidth: 0 }}>
+        <RoomContext.Provider value={room}>
+          <KeyboardShortcuts />
+          <VideoConference
+            chatMessageFormatter={formatChatMessageLinks}
+            SettingsComponent={SHOW_SETTINGS_MENU ? SettingsMenu : undefined}
+          />
+          <DebugMode />
+          <RecordingIndicator />
+        </RoomContext.Provider>
+      </div>
     </div>
   );
 }

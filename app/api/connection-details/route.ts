@@ -1,7 +1,13 @@
 import { randomString } from '@/lib/client-utils';
 import { getLiveKitURL } from '@/lib/getLiveKitURL';
 import { ConnectionDetails } from '@/lib/types';
-import { AccessToken, AccessTokenOptions, VideoGrant } from 'livekit-server-sdk';
+import {
+  AccessToken,
+  AccessTokenOptions,
+  AgentDispatchClient,
+  RoomServiceClient,
+  VideoGrant,
+} from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 
 const API_KEY = process.env.LIVEKIT_API_KEY;
@@ -45,6 +51,20 @@ export async function GET(request: NextRequest) {
       },
       roomName,
     );
+
+    // Ensure the room exists, then dispatch the AI onboarding agent
+    try {
+      const httpUrl = livekitServerUrl.replace('wss://', 'https://').replace('ws://', 'http://');
+      // Create the room first (idempotent — no-op if it already exists)
+      const roomService = new RoomServiceClient(httpUrl, API_KEY, API_SECRET);
+      await roomService.createRoom({ name: roomName });
+      // Now dispatch the agent into the existing room
+      const agentDispatch = new AgentDispatchClient(httpUrl, API_KEY, API_SECRET);
+      await agentDispatch.createDispatch(roomName, 'onboarding-agent');
+      console.log(`Room created & agent dispatched to: ${roomName}`);
+    } catch (dispatchError) {
+      console.warn('Agent dispatch failed (agent may not be running):', dispatchError);
+    }
 
     // Return connection details
     const data: ConnectionDetails = {

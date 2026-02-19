@@ -40,6 +40,66 @@ Behavior:
 
 Keep your speech natural, concise, and friendly — like a helpful colleague showing someone around.
 Keep narrations to 1-2 short sentences before each action so the screen stays in sync with your voice.
+
+## Browser Control — Mandatory Workflow
+
+You control a real browser via the execute_browser_action tool. Follow this workflow strictly:
+
+### Step A — Always snapshot before interacting
+Before ANY click, fill, select, or check action, call get_page_snapshot to get element refs (@e1, @e2, ...).
+Never guess or reuse old refs — refs are invalidated after every navigation or DOM change.
+
+### Step B — Use refs to interact
+Use the @eN refs returned by the snapshot as the `target` for actions:
+  fill @e2 "user@example.com"   → clears the field and types the value
+  click @e3                     → clicks the element
+  press Enter                   → submits a form or triggers keyboard action
+  select @e4 "Option Name"      → picks a dropdown option
+  check @e5                     → checks a checkbox
+  scroll down 500               → scrolls the page down 500px
+  scrollintoview @e6            → scrolls an off-screen element into view
+
+### Step C — Re-snapshot after navigation or dynamic changes
+After any click that navigates to a new page, or after a modal/dropdown opens, always call get_page_snapshot again before the next interaction.
+
+## Form Filling — Exact Pattern
+
+When asked to fill a form (e.g. login with email and password):
+1. Call get_page_snapshot → identify the email input ref (e.g. @e2) and password input ref (e.g. @e3) and submit button ref (e.g. @e4)
+2. execute_browser_action: action="fill", target="@e2", value="user@example.com"
+3. execute_browser_action: action="fill", target="@e3", value="password123"
+4. execute_browser_action: action="click", target="@e4"
+5. Call get_page_snapshot again to confirm the result
+
+## Semantic Locators — Fallback When Refs Are Unavailable
+
+If a snapshot is not available or an element is hard to find by ref, use semantic locators:
+  action="find", target="label 'Email' fill", value="user@example.com"
+  action="find", target="placeholder 'Password' fill", value="secret"
+  action="find", target="role button click", value="Submit"
+  action="find", target="text 'Sign In' click"
+
+## Key Commands Quick Reference
+
+| action        | target                  | value          | description                        |
+|---------------|-------------------------|----------------|------------------------------------|
+| snapshot      | (none)                  | (none)         | Use get_page_snapshot tool instead |
+| fill          | @eN                     | text to enter  | Clear field and type               |
+| type          | @eN                     | text to append | Type without clearing              |
+| click         | @eN                     | (none)         | Click element                      |
+| press         | Enter / Tab / Escape    | (none)         | Press keyboard key                 |
+| select        | @eN                     | option label   | Pick dropdown option               |
+| check         | @eN                     | (none)         | Check a checkbox                   |
+| uncheck       | @eN                     | (none)         | Uncheck a checkbox                 |
+| scroll        | down / up               | pixels (e.g. 500) | Scroll the page                 |
+| scrollintoview| @eN                     | (none)         | Scroll element into view           |
+| hover         | @eN                     | (none)         | Hover over element                 |
+| open          | https://url             | (none)         | Navigate to URL                    |
+| wait          | --load networkidle      | (none)         | Wait for page to fully load        |
+| wait          | @eN                     | (none)         | Wait for element to appear         |
+| get           | url                     | (none)         | Get current page URL               |
+| get           | title                   | (none)         | Get page title                     |
+| get           | text @eN                | (none)         | Get text content of element        |
 """
 
 # Delay (seconds) before executing a browser action, giving TTS time to finish narrating
@@ -132,13 +192,34 @@ class OnboardingOrchestrator(Agent):
     ) -> str:
         """Execute a browser action on the shared screen. Call this AFTER you have finished narrating what you are about to do.
 
+        IMPORTANT: Always call get_page_snapshot first to get element refs (@e1, @e2, ...) before
+        using actions that require a target element (fill, click, select, check, hover, scrollintoview).
+        Refs are invalidated after every page navigation or DOM change — always re-snapshot.
+
         Args:
-            action: The browser action to perform (e.g., 'click', 'type', 'scroll', 'open', 'press').
-            target: The target element or URL (e.g., '@e1', 'https://example.com', 'ArrowRight').
-            value: Optional value for the action (e.g., text to type).
+            action: The browser action to perform. Supported values:
+                - 'fill'          → Clear a field and type text. target=@eN, value=text.
+                - 'type'          → Type text without clearing. target=@eN, value=text.
+                - 'click'         → Click an element. target=@eN.
+                - 'press'         → Press a keyboard key. target=key name (e.g. 'Enter', 'Tab', 'Escape', 'Control+a').
+                - 'select'        → Pick a dropdown option. target=@eN, value=option label.
+                - 'check'         → Check a checkbox. target=@eN.
+                - 'uncheck'       → Uncheck a checkbox. target=@eN.
+                - 'hover'         → Hover over element. target=@eN.
+                - 'scroll'        → Scroll the page. target='down' or 'up', value=pixels (e.g. '500').
+                - 'scrollintoview'→ Scroll element into view. target=@eN.
+                - 'open'          → Navigate to a URL. target=full URL.
+                - 'wait'          → Wait. target='--load networkidle' | '@eN' | milliseconds.
+                - 'find'          → Semantic locator fallback (no snapshot needed).
+                                    target='label "Email" fill' | 'text "Sign In" click' | 'role button click'.
+                                    value=text to fill (for fill actions).
+                - 'get'           → Get info. target='url' | 'title' | 'text @eN'.
+                - 'press'         → Keyboard key. target='Enter' | 'Tab' | 'Escape' | 'Control+a'.
+            target: The target for the action — an element ref (@e1), URL, key name, or semantic locator.
+            value: Optional value — text to fill/type, option label for select, pixel count for scroll.
 
         Returns:
-            Result of the browser action.
+            Result of the browser action, or an error message if it failed.
         """
         # Delay before acting so TTS narration finishes playing first
         if PRE_ACTION_DELAY > 0:
@@ -151,10 +232,22 @@ class OnboardingOrchestrator(Agent):
 
     @function_tool
     async def get_page_snapshot(self, context: RunContext) -> str:
-        """Get the current page's accessibility tree snapshot to understand what's on screen.
+        """Get the current page's accessibility tree snapshot with interactive element refs.
+
+        MUST be called before any fill, click, select, check, or hover action so you know
+        which @eN ref to target. Also call after any navigation or dynamic DOM change
+        (modal open, dropdown expand, page redirect) to get fresh refs.
+
+        The snapshot output lists interactive elements like:
+            @e1 [button] "Sign In"
+            @e2 [input type="email"] placeholder="Email"
+            @e3 [input type="password"] placeholder="Password"
+            @e4 [a href="/signup"] "Create account"
+
+        Use the @eN refs directly as the `target` in execute_browser_action.
 
         Returns:
-            JSON snapshot of the current page with element refs.
+            Accessibility tree of the current page with @eN element refs.
         """
         logger.info("Getting page snapshot")
         snapshot = await self._browser_agent.get_snapshot()

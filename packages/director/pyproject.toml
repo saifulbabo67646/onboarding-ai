@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "onboard-director"
+version = "0.1.0"
+description = "Claude computer-use loop that gives live product demos and presentations like a human presenter"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+  "anthropic>=1.8",
+  "onboard-sandbox",
+  "aiohttp>=3.9",
+  "Pillow>=10",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+onboard-director = "onboard_director.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/onboard_director"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

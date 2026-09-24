@@ -1,0 +1,54 @@
+# Full stack: dashboard + presenter worker. Every live session gets its own
+# sandbox container, started by the worker through the Docker socket.
+#
+#   cp .env.example .env    # fill in the keys
+#   docker compose build    # also builds the sandbox image
+#   docker compose up
+#
+# Then open http://localhost:3000/dashboard.
+
+name: onboarding-ai
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    env_file: .env
+    environment:
+      AGENT_CALLBACK_BASE_URL: http://web:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - web-data:/data
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+    env_file: .env
+    environment:
+      SANDBOX_PROVIDER: docker
+      SANDBOX_IMAGE: onboard-sandbox:latest
+      SANDBOX_DOCKER_NETWORK: onboarding-ai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - web
+    restart: unless-stopped
+
+  # Build-only service: produces the per-session desktop image the worker runs.
+  sandbox-image:
+    image: onboard-sandbox:latest
+    build:
+      context: .
+      dockerfile: packages/sandbox/Dockerfile
+    profiles: ["build"]
+
+networks:
+  default:
+    name: onboarding-ai
+
+volumes:
+  web-data:

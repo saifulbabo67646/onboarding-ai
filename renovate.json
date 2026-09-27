@@ -10,8 +10,7 @@
     {
       "matchSourceUrlPrefixes": ["https://github.com/livekit/"],
       "rangeStrategy": "replace",
-      "groupName": "LiveKit dependencies (non-major)",
-      "automerge": true
+      "groupName": "LiveKit dependencies (non-major)"
     }
   ]
 }

@@ -6,6 +6,12 @@ Next.js app with three surfaces:
   a goal, a start URL or slide deck link, persona, voice, time limit, whiteboard toggle and
   secrets. Each presenter gets a share link and a session history with transcripts.
 - **Public demo page** (`/d/<slug>`) - a visitor enters their name and joins.
+- **Website widget** (`/embed.js`) - an Intercom-style launcher for the owner's own site:
+  `<script src="https://HOST/embed.js" data-presenter="<slug>" async></script>`. It opens a
+  compact join panel, expands to a large centred stage when the call goes live, and can be
+  minimized without ending the call. Options: `data-label`, `data-color`, `data-position`,
+  `data-name`, `data-open`; API: `OnboardAI.open({ name })`, `.close()`, `.toggle()`.
+  The iframe page is `/embed/<slug>`; the dashboard shows the snippet and a preview page.
 - **Meeting room** - the presenter's screen share on stage, a speaking indicator, the visitor's
   camera tile, live captions and mic/camera/leave controls.
 

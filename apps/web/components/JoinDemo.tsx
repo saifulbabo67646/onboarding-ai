@@ -1,16 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ConnectionDetails, PublicAgent } from '@/lib/types';
 import { DemoRoom } from './DemoRoom';
 
 type Phase = 'form' | 'joining' | 'live' | 'ended';
 
-export function JoinDemo({ agent }: { agent: PublicAgent }) {
-  const [name, setName] = useState('');
+export function JoinDemo({
+  agent,
+  embedded = false,
+  initialName = '',
+}: {
+  agent: PublicAgent;
+  /** Rendered inside the website widget (an iframe on the owner's site). */
+  embedded?: boolean;
+  initialName?: string;
+}) {
+  const [name, setName] = useState(initialName);
   const [phase, setPhase] = useState<Phase>('form');
   const [error, setError] = useState<string | null>(null);
   const [details, setDetails] = useState<ConnectionDetails | null>(null);
+
+  // Tell the widget on the host page what is happening so it can resize itself.
+  useEffect(() => {
+    if (embedded && window.parent !== window) {
+      window.parent.postMessage({ source: 'onboard-ai', type: 'state', state: phase }, '*');
+    }
+  }, [embedded, phase]);
 
   async function join(e: React.FormEvent) {
     e.preventDefault();
@@ -37,7 +53,7 @@ export function JoinDemo({ agent }: { agent: PublicAgent }) {
 
   const isDeck = agent.mode === 'presentation';
   return (
-    <main className="join-page">
+    <main className={`join-page${embedded ? ' embedded' : ''}`}>
       <div className="card join-card stack">
         {phase === 'ended' ? (
           <>

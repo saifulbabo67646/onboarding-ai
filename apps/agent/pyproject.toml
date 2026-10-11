@@ -16,6 +16,9 @@ dependencies = [
   "livekit-plugins-deepgram>=1.8",
   "livekit-plugins-elevenlabs>=1.8",
   "livekit-plugins-silero>=1.8",
+  # Background voice cancellation (LiveKit Cloud): keeps breathing and room noise
+  # from reaching voice detection.
+  "livekit-plugins-noise-cancellation>=0.2",
   "python-dotenv>=1.0",
   "Pillow>=10",
 ]

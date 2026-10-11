@@ -143,7 +143,9 @@ async def test_presents_and_ends():
     assert first["tools"][0] == {"type": "computer_toolset_20260801"}
     assert "context-management-2025-06-27" in first["betas"]
     assert first["fallbacks"] == "default"
-    assert first["thinking"] == {"type": "adaptive"}
+    assert first["model"] == "claude-opus-5-5"
+    assert first["thinking"]["type"] == "adaptive"
+    assert "tool_choice" not in first  # forced tool use is rejected on Opus 5.5
 
     # Second request carries tool results, with toolset_name echoed for computer calls
     # and a fresh screenshot attached after the screen changed.

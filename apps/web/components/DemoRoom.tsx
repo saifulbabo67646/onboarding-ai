@@ -12,9 +12,18 @@ import {
   useVoiceAssistant,
   VideoTrack,
 } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { Track, type AudioCaptureOptions } from 'livekit-client';
 import { useEffect, useRef } from 'react';
 import type { ConnectionDetails, PublicAgent } from '@/lib/types';
+
+// Let the browser clean up the visitor's mic before it reaches the presenter:
+// fewer breaths, keyboard clicks and echoes of the presenter's own voice.
+const MIC_OPTIONS: AudioCaptureOptions = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  voiceIsolation: true,
+};
 
 export function DemoRoom({
   details,
@@ -30,7 +39,7 @@ export function DemoRoom({
       serverUrl={details.serverUrl}
       token={details.participantToken}
       connect
-      audio
+      audio={MIC_OPTIONS}
       video={false}
       onDisconnected={onLeave}
     >

@@ -71,7 +71,7 @@ def main() -> None:
     p.add_argument("--audience", default="there")
     p.add_argument("--whiteboard", action="store_true")
     p.add_argument("--minutes", type=float, default=15)
-    p.add_argument("--model", default="claude-opus-5")
+    p.add_argument("--model", default="claude-opus-5-5")
     p.add_argument("--effort", default="medium")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")

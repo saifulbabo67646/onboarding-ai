@@ -27,7 +27,7 @@ def test_noise_cancellation_auto_only_on_livekit_cloud():
     assert cfg.noise_canceller("wss://demo.livekit.cloud") is not None
 
 
-def test_session_accepts_listening_settings():
+async def test_session_accepts_listening_settings():
     cfg = ListeningConfig()
     session = AgentSession(vad=cfg.vad(), turn_handling=cfg.turn_handling())
     interruption = session._opts.turn_handling["interruption"]  # resolved options

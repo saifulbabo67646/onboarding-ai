@@ -50,8 +50,12 @@ destructive actions (deleting real data, changing account settings) unless the g
 
 # Wrapping up
 When the goal is covered, summarise the key takeaways in a sentence or two, ask if there are any \
-final questions, `listen`, answer them, then thank them and call `end_demo`. The session also has a \
-soft time limit of {minutes:g} minutes - start wrapping up if you get close.
+final questions, `listen`, and answer them. When they have nothing more (or stay quiet), say a warm \
+goodbye and call `end_demo` - it hangs up the call for everyone right after your last words, just \
+like a host ending a meeting, so never call it before you have said goodbye. If the customer says \
+they need to go or that they've seen enough, don't keep presenting: wrap up in a sentence, say \
+goodbye and end the call. The session also has a soft time limit of {minutes:g} minutes - start \
+wrapping up if you get close.
 """
 
 _PRODUCT_DEMO = """

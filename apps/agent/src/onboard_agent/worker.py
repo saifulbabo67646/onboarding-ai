@@ -36,6 +36,8 @@ from .voice import LiveKitNarrator, PresenterAgent
 logger = logging.getLogger("onboard.agent")
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "onboarding-agent")
+# Seconds between the presenter's last word and hanging up.
+HANG_UP_DELAY = float(os.environ.get("HANG_UP_DELAY", "1.5"))
 
 server = AgentServer()
 
@@ -138,7 +140,25 @@ async def entrypoint(ctx: JobContext) -> None:
     except Exception:
         logger.exception("director crashed")
         reporter.emit("error", {"message": "director crashed"})
-    await asyncio.sleep(2)
+        if _human_participants(ctx.room):
+            await LiveKitNarrator(session).say(
+                "Sorry, I've run into a technical problem and need to end our session here. "
+                "Thanks so much for your time!"
+            ).wait()
+    await hang_up(ctx)
+
+
+async def hang_up(ctx: JobContext) -> None:
+    """End the call for everyone, like a presenter clicking "End meeting".
+
+    Deleting the room disconnects the visitor too, so they see the end screen
+    instead of sitting alone in an empty call.
+    """
+    await asyncio.sleep(HANG_UP_DELAY)  # let the goodbye land before the line goes quiet
+    try:
+        await ctx.delete_room()
+    except Exception as e:  # noqa: BLE001 - fall back to just leaving
+        logger.warning("could not close the room, leaving instead: %s", e)
     ctx.shutdown(reason="presentation finished")
 
 

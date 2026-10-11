@@ -20,6 +20,7 @@ export function JoinDemo({
   const [phase, setPhase] = useState<Phase>('form');
   const [error, setError] = useState<string | null>(null);
   const [details, setDetails] = useState<ConnectionDetails | null>(null);
+  const [endedByPresenter, setEndedByPresenter] = useState(false);
 
   // Tell the widget on the host page what is happening so it can resize itself.
   useEffect(() => {
@@ -48,7 +49,16 @@ export function JoinDemo({
   }
 
   if (phase === 'live' && details) {
-    return <DemoRoom details={details} agent={agent} onLeave={() => setPhase('ended')} />;
+    return (
+      <DemoRoom
+        details={details}
+        agent={agent}
+        onLeave={(byPresenter) => {
+          setEndedByPresenter(byPresenter);
+          setPhase('ended');
+        }}
+      />
+    );
   }
 
   const isDeck = agent.mode === 'presentation';
@@ -59,7 +69,9 @@ export function JoinDemo({
           <>
             <h1>Thanks for joining!</h1>
             <p className="muted" style={{ margin: 0 }}>
-              We hope that was useful. You can start a fresh session whenever you like.
+              {endedByPresenter
+                ? `${agent.presenterName} ended the session. We hope it was useful - you can start a fresh one whenever you like.`
+                : 'We hope that was useful. You can start a fresh session whenever you like.'}
             </p>
             <button className="btn btn-primary btn-lg" onClick={() => setPhase('form')}>
               Start again

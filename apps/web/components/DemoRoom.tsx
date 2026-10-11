@@ -12,7 +12,7 @@ import {
   useVoiceAssistant,
   VideoTrack,
 } from '@livekit/components-react';
-import { Track, type AudioCaptureOptions } from 'livekit-client';
+import { DisconnectReason, Track, type AudioCaptureOptions } from 'livekit-client';
 import { useEffect, useRef } from 'react';
 import type { ConnectionDetails, PublicAgent } from '@/lib/types';
 
@@ -32,7 +32,8 @@ export function DemoRoom({
 }: {
   details: ConnectionDetails;
   agent: PublicAgent;
-  onLeave: () => void;
+  /** `endedByPresenter` is true when the presenter hung up (closed the room). */
+  onLeave: (endedByPresenter: boolean) => void;
 }) {
   return (
     <LiveKitRoom
@@ -41,7 +42,7 @@ export function DemoRoom({
       connect
       audio={MIC_OPTIONS}
       video={false}
-      onDisconnected={onLeave}
+      onDisconnected={(reason) => onLeave(reason === DisconnectReason.ROOM_DELETED)}
     >
       <RoomAudioRenderer />
       <div className="room">

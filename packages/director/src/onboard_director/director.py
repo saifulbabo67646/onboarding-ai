@@ -93,6 +93,7 @@ class Director:
         self._screen = (1280, 800)
         self._started = 0.0
         self._wrap_up_sent = False
+        self._time_up = False
         self._system = ""
         self._tools: list[dict[str, Any]] = []
         self._pending_results: list[dict[str, Any]] = []
@@ -155,6 +156,8 @@ class Director:
             if self._done:
                 break
             self._check_time()
+            if self._done:
+                break
             message = await self._model_turn()
             if message is None:
                 break
@@ -180,6 +183,9 @@ class Director:
             if self._done:
                 break
             self._append_user(content)
+        if self._time_up and self.summary is None:
+            # Hard time limit reached without a proper wrap-up: still say goodbye.
+            await self._say_and_wait("We're out of time for today - thanks so much for joining!")
         await self._finish_speaking()
         await self._safe(self.computer.presence(idle=False))
         self.on_event("end", {"summary": self.summary})
@@ -431,6 +437,7 @@ class Director:
             self._inbox.append("(Time check from the organiser: please wrap up now.)")
         if elapsed_min >= self.brief.max_minutes + 5:
             self._done = True
+            self._time_up = True
 
     async def _screenshot_image(self) -> Image.Image:
         data = await self.computer.screenshot(fmt="jpeg", quality=self.config.screenshot_quality)

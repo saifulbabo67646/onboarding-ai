@@ -22,8 +22,12 @@ the way a colleague would.
 - **Human presence** - curved, Fitts'-law mouse motion with minimum-jerk velocity and small
   overshoots; typing at ~70 wpm with occasional corrected typos; the cursor rests on (or circles,
   or underlines) what is being talked about; the mouse freezes politely when the visitor speaks.
+- **Embed on any website** - each presenter has a one-line script snippet that adds an
+  Intercom-style launcher to your own site; the live session opens right on the page.
 - **Interruptions** - visitors just talk. Short acknowledgements ("mhm", "ok") don't derail it;
   real questions stop the current action, get answered (on screen if useful), and the demo resumes.
+  Breathing and room noise don't count: an interruption needs recognised words, and LiveKit
+  Cloud's background voice cancellation filters the visitor's mic (tunable, see `.env.example`).
 
 ## How it works
 
@@ -119,7 +123,7 @@ dispatches across workers.
 | --- | --- | --- |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | web, agent | Meetings |
 | `ANTHROPIC_API_KEY` | agent | The director |
-| `DIRECTOR_MODEL` / `DIRECTOR_EFFORT` | agent | Model (default `claude-opus-5`) and effort (default `medium`, a latency trade-off for live calls) |
+| `DIRECTOR_MODEL` / `DIRECTOR_EFFORT` | agent | Model (default `claude-opus-5-5`) and effort (default `medium`, a latency trade-off for live calls) |
 | `DEEPGRAM_API_KEY`, `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` | agent | Speech-to-text and voice |
 | `DASHBOARD_PASSWORD` | web | Owner login (dashboard is open when unset) |
 | `AGENT_CALLBACK_SECRET` | web, agent | Authenticates transcript/status reports |

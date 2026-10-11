@@ -23,10 +23,12 @@ import os
 
 from livekit import rtc
 from livekit.agents import AgentServer, AgentSession, JobContext, cli
-from livekit.plugins import deepgram, elevenlabs, silero
+from livekit.agents.voice import room_io
+from livekit.plugins import deepgram, elevenlabs
 from onboard_director import DemoBrief, Director, DirectorConfig
 from onboard_sandbox import provider_from_env
 
+from .listening import ListeningConfig, has_words
 from .reporter import EventReporter
 from .screen_share import ScreenShare
 from .voice import LiveKitNarrator, PresenterAgent
@@ -34,26 +36,29 @@ from .voice import LiveKitNarrator, PresenterAgent
 logger = logging.getLogger("onboard.agent")
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "onboarding-agent")
+# Seconds between the presenter's last word and hanging up.
+HANG_UP_DELAY = float(os.environ.get("HANG_UP_DELAY", "1.5"))
 
 server = AgentServer()
 
 
 def _director_config() -> DirectorConfig:
     return DirectorConfig(
-        model=os.environ.get("DIRECTOR_MODEL", "claude-opus-5"),
+        model=os.environ.get("DIRECTOR_MODEL", "claude-opus-5-5"),
         effort=os.environ.get("DIRECTOR_EFFORT", "medium"),
         fallbacks=os.environ.get("DIRECTOR_FALLBACKS", "1") != "0",
     )
 
 
-def _voice_session(voice: dict) -> AgentSession:
+def _voice_session(voice: dict, listening: ListeningConfig) -> AgentSession:
     tts_kwargs = {}
     if voice.get("tts_voice") or os.environ.get("ELEVEN_VOICE_ID"):
         tts_kwargs["voice_id"] = voice.get("tts_voice") or os.environ["ELEVEN_VOICE_ID"]
     return AgentSession(
         stt=deepgram.STT(model="nova-3", language=voice.get("stt_language", "en")),
         tts=elevenlabs.TTS(**tts_kwargs),
-        vad=silero.VAD.load(),
+        vad=listening.vad(),
+        turn_handling=listening.turn_handling(),
     )
 
 
@@ -92,8 +97,17 @@ async def entrypoint(ctx: JobContext) -> None:
     await share.start(ctx.room.local_participant)
 
     agent = PresenterAgent()
-    session = _voice_session(meta.get("voice") or {})
-    await session.start(agent=agent, room=ctx.room)
+    listening = ListeningConfig.from_env()
+    session = _voice_session(meta.get("voice") or {}, listening)
+    await session.start(
+        agent=agent,
+        room=ctx.room,
+        room_options=room_io.RoomOptions(
+            audio_input=room_io.AudioInputOptions(
+                noise_cancellation=listening.noise_canceller(os.environ.get("LIVEKIT_URL", ""))
+            )
+        ),
+    )
 
     participant = await ctx.wait_for_participant()
     brief.audience_name = brief.audience_name or participant.name or None
@@ -102,9 +116,17 @@ async def entrypoint(ctx: JobContext) -> None:
     director = Director(brief, sandbox, LiveKitNarrator(session), config=_director_config(), on_event=reporter.emit)
     agent.attach(director)
 
+    # Freeze the mouse only once real words are heard (not on breaths or noise),
+    # and let it move again as soon as the visitor stops talking.
+    @session.on("user_input_transcribed")
+    def _on_transcript(ev) -> None:
+        if has_words(ev.transcript, listening.interrupt_min_words):
+            asyncio.ensure_future(director.audience_speaking(True))
+
     @session.on("user_state_changed")
     def _on_user_state(ev) -> None:
-        asyncio.ensure_future(director.audience_speaking(ev.new_state == "speaking"))
+        if ev.new_state != "speaking":
+            asyncio.ensure_future(director.audience_speaking(False))
 
     @ctx.room.on("participant_disconnected")
     def _on_left(_: rtc.RemoteParticipant) -> None:
@@ -118,7 +140,25 @@ async def entrypoint(ctx: JobContext) -> None:
     except Exception:
         logger.exception("director crashed")
         reporter.emit("error", {"message": "director crashed"})
-    await asyncio.sleep(2)
+        if _human_participants(ctx.room):
+            await LiveKitNarrator(session).say(
+                "Sorry, I've run into a technical problem and need to end our session here. "
+                "Thanks so much for your time!"
+            ).wait()
+    await hang_up(ctx)
+
+
+async def hang_up(ctx: JobContext) -> None:
+    """End the call for everyone, like a presenter clicking "End meeting".
+
+    Deleting the room disconnects the visitor too, so they see the end screen
+    instead of sitting alone in an empty call.
+    """
+    await asyncio.sleep(HANG_UP_DELAY)  # let the goodbye land before the line goes quiet
+    try:
+        await ctx.delete_room()
+    except Exception as e:  # noqa: BLE001 - fall back to just leaving
+        logger.warning("could not close the room, leaving instead: %s", e)
     ctx.shutdown(reason="presentation finished")
 
 

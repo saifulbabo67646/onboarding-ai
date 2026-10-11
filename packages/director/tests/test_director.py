@@ -143,7 +143,9 @@ async def test_presents_and_ends():
     assert first["tools"][0] == {"type": "computer_toolset_20260801"}
     assert "context-management-2025-06-27" in first["betas"]
     assert first["fallbacks"] == "default"
-    assert first["thinking"] == {"type": "adaptive"}
+    assert first["model"] == "claude-opus-5-5"
+    assert first["thinking"]["type"] == "adaptive"
+    assert "tool_choice" not in first  # forced tool use is rejected on Opus 5.5
 
     # Second request carries tool results, with toolset_name echoed for computer calls
     # and a fresh screenshot attached after the screen changed.
@@ -288,3 +290,19 @@ def test_sketch_uses_excalidraw_shortcuts_and_drags():
     drags = [a for a in actions if a["type"] == "drag"]
     assert drags[0] == {"type": "drag", "start": [100.0, 100.0], "end": [300.0, 180.0]}
     assert any(a.get("text") == "API" for a in actions)
+
+
+async def test_time_limit_still_says_goodbye():
+    brief = DemoBrief(goal="Show the dashboard", max_minutes=-5)  # already past the hard limit
+    director, client, _, narrator = make([], brief=brief)
+    await director.run()
+    assert client.requests == []
+    assert "out of time" in narrator.said[-1]
+
+
+def test_end_demo_is_described_as_hanging_up():
+    from onboard_director.prompts import system_prompt
+    from onboard_director.tools import END_DEMO
+
+    assert "Hang up" in END_DEMO["description"]
+    assert "hangs up the call for everyone" in system_prompt(DemoBrief(goal="g"))

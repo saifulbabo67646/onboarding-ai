@@ -1,16 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ConnectionDetails, PublicAgent } from '@/lib/types';
 import { DemoRoom } from './DemoRoom';
 
 type Phase = 'form' | 'joining' | 'live' | 'ended';
 
-export function JoinDemo({ agent }: { agent: PublicAgent }) {
-  const [name, setName] = useState('');
+export function JoinDemo({
+  agent,
+  embedded = false,
+  initialName = '',
+}: {
+  agent: PublicAgent;
+  /** Rendered inside the website widget (an iframe on the owner's site). */
+  embedded?: boolean;
+  initialName?: string;
+}) {
+  const [name, setName] = useState(initialName);
   const [phase, setPhase] = useState<Phase>('form');
   const [error, setError] = useState<string | null>(null);
   const [details, setDetails] = useState<ConnectionDetails | null>(null);
+  const [endedByPresenter, setEndedByPresenter] = useState(false);
+
+  // Tell the widget on the host page what is happening so it can resize itself.
+  useEffect(() => {
+    if (embedded && window.parent !== window) {
+      window.parent.postMessage({ source: 'onboard-ai', type: 'state', state: phase }, '*');
+    }
+  }, [embedded, phase]);
 
   async function join(e: React.FormEvent) {
     e.preventDefault();
@@ -32,18 +49,29 @@ export function JoinDemo({ agent }: { agent: PublicAgent }) {
   }
 
   if (phase === 'live' && details) {
-    return <DemoRoom details={details} agent={agent} onLeave={() => setPhase('ended')} />;
+    return (
+      <DemoRoom
+        details={details}
+        agent={agent}
+        onLeave={(byPresenter) => {
+          setEndedByPresenter(byPresenter);
+          setPhase('ended');
+        }}
+      />
+    );
   }
 
   const isDeck = agent.mode === 'presentation';
   return (
-    <main className="join-page">
+    <main className={`join-page${embedded ? ' embedded' : ''}`}>
       <div className="card join-card stack">
         {phase === 'ended' ? (
           <>
             <h1>Thanks for joining!</h1>
             <p className="muted" style={{ margin: 0 }}>
-              We hope that was useful. You can start a fresh session whenever you like.
+              {endedByPresenter
+                ? `${agent.presenterName} ended the session. We hope it was useful - you can start a fresh one whenever you like.`
+                : 'We hope that was useful. You can start a fresh session whenever you like.'}
             </p>
             <button className="btn btn-primary btn-lg" onClick={() => setPhase('form')}>
               Start again

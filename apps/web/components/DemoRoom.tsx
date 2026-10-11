@@ -12,9 +12,18 @@ import {
   useVoiceAssistant,
   VideoTrack,
 } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { DisconnectReason, Track, type AudioCaptureOptions } from 'livekit-client';
 import { useEffect, useRef } from 'react';
 import type { ConnectionDetails, PublicAgent } from '@/lib/types';
+
+// Let the browser clean up the visitor's mic before it reaches the presenter:
+// fewer breaths, keyboard clicks and echoes of the presenter's own voice.
+const MIC_OPTIONS: AudioCaptureOptions = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  voiceIsolation: true,
+};
 
 export function DemoRoom({
   details,
@@ -23,16 +32,17 @@ export function DemoRoom({
 }: {
   details: ConnectionDetails;
   agent: PublicAgent;
-  onLeave: () => void;
+  /** `endedByPresenter` is true when the presenter hung up (closed the room). */
+  onLeave: (endedByPresenter: boolean) => void;
 }) {
   return (
     <LiveKitRoom
       serverUrl={details.serverUrl}
       token={details.participantToken}
       connect
-      audio
+      audio={MIC_OPTIONS}
       video={false}
-      onDisconnected={onLeave}
+      onDisconnected={(reason) => onLeave(reason === DisconnectReason.ROOM_DELETED)}
     >
       <RoomAudioRenderer />
       <div className="room">

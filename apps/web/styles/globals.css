@@ -640,3 +640,74 @@ details.session summary {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Embedded (website widget iframe) ───────────────────────── */
+
+.join-page.embedded {
+  place-items: start stretch;
+  padding: 8px;
+  background: var(--bg);
+}
+
+.join-page.embedded .join-card {
+  max-width: none;
+  padding: 16px;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.join-page.embedded .join-card h1 {
+  font-size: 21px;
+}
+
+.code {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text);
+}
+
+/* Widget preview: a light, generic "customer website". */
+.sample-site {
+  min-height: 100vh;
+  background: #f6f7fb;
+  color: #1c2030;
+}
+
+.sample-site header {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 40px;
+  background: white;
+  border-bottom: 1px solid #e6e8ef;
+}
+
+.sample-site nav {
+  display: flex;
+  gap: 24px;
+  color: #5b6272;
+}
+
+.sample-site main {
+  max-width: 720px;
+  margin: 80px auto;
+  padding: 0 24px;
+}
+
+.sample-site h1 {
+  font-size: 36px;
+  margin-bottom: 16px;
+}
+
+.sample-site p {
+  color: #4a5162;
+  font-size: 17px;
+}

@@ -122,7 +122,8 @@ SKETCH = _tool(
 
 END_DEMO = _tool(
     "end_demo",
-    "Finish the session after you have said goodbye.",
+    "Hang up the call for everyone and end the session. Only call this after you have said "
+    "goodbye out loud; it waits for your last words to finish, then closes the meeting.",
     {"summary": {"type": "string", "description": "Private one-paragraph summary for the owner."}},
     ["summary"],
 )

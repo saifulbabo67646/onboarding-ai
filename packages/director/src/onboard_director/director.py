@@ -48,9 +48,12 @@ def is_backchannel(text: str) -> bool:
 
 @dataclass
 class DirectorConfig:
-    model: str = "claude-opus-5"
-    effort: str = "medium"  # latency matters in a live call; raise for harder demos
-    max_tokens: int = 16000
+    model: str = "claude-opus-5-5"
+    # Set explicitly: latency matters in a live call. On Opus 5.5, "medium" already
+    # thinks more than Opus 5 at "high"; try "low" if pauses feel long.
+    effort: str = "medium"
+    # Thinking counts toward max_tokens even though its text isn't returned.
+    max_tokens: int = 32000
     fallbacks: bool = True
     screenshot_quality: int = 80
     settle_seconds: float = 0.6
@@ -90,6 +93,7 @@ class Director:
         self._screen = (1280, 800)
         self._started = 0.0
         self._wrap_up_sent = False
+        self._time_up = False
         self._system = ""
         self._tools: list[dict[str, Any]] = []
         self._pending_results: list[dict[str, Any]] = []
@@ -110,6 +114,8 @@ class Director:
 
     async def audience_speaking(self, speaking: bool) -> None:
         """Freeze the mouse while someone is talking, like a polite presenter."""
+        if speaking == self._audience_speaking:
+            return
         self._audience_speaking = speaking
         await self._safe(self.computer.pause() if speaking else self.computer.resume())
 
@@ -150,6 +156,8 @@ class Director:
             if self._done:
                 break
             self._check_time()
+            if self._done:
+                break
             message = await self._model_turn()
             if message is None:
                 break
@@ -175,6 +183,9 @@ class Director:
             if self._done:
                 break
             self._append_user(content)
+        if self._time_up and self.summary is None:
+            # Hard time limit reached without a proper wrap-up: still say goodbye.
+            await self._say_and_wait("We're out of time for today - thanks so much for joining!")
         await self._finish_speaking()
         await self._safe(self.computer.presence(idle=False))
         self.on_event("end", {"summary": self.summary})
@@ -183,14 +194,16 @@ class Director:
     # -- model turn --------------------------------------------------------------------
 
     def _request_params(self) -> dict[str, Any]:
-        betas = ["context-management-2025-06-27"]
+        # The history is append-only, so replayed thinking blocks stay valid. If a
+        # prefix ever did change, drop the stale block instead of failing the turn.
+        betas = ["context-management-2025-06-27", "thinking-binding-controls-2026-08-01"]
         params: dict[str, Any] = {
             "model": self.config.model,
             "max_tokens": self.config.max_tokens,
             "system": [{"type": "text", "text": self._system, "cache_control": {"type": "ephemeral"}}],
             "tools": self._tools,
             "messages": self.messages,
-            "thinking": {"type": "adaptive"},
+            "thinking": {"type": "adaptive", "block_binding": {"prefix_mismatch_behavior": "drop_block"}},
             "output_config": {"effort": self.config.effort},
             "cache_control": {"type": "ephemeral"},
             "context_management": {
@@ -424,6 +437,7 @@ class Director:
             self._inbox.append("(Time check from the organiser: please wrap up now.)")
         if elapsed_min >= self.brief.max_minutes + 5:
             self._done = True
+            self._time_up = True
 
     async def _screenshot_image(self) -> Image.Image:
         data = await self.computer.screenshot(fmt="jpeg", quality=self.config.screenshot_quality)

@@ -127,7 +127,11 @@ function Captions({ presenterName }: { presenterName: string }) {
   const transcriptions = useTranscriptions();
   const { localParticipant } = useLocalParticipant();
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ behavior: 'smooth' }), [transcriptions]);
+  useEffect(() => {
+    // Braces matter: newer Chrome returns a Promise from scrollIntoView, and React
+    // would treat any returned value as the effect's cleanup function.
+    end.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [transcriptions]);
   return (
     <div className="captions">
       <h2 style={{ marginBottom: 0 }}>Live captions</h2>

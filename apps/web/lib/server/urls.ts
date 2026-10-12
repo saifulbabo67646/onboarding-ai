@@ -9,3 +9,12 @@ export async function publicOrigin(): Promise<string> {
   const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
   return `${proto}://${host}`;
 }
+
+/** Origin for links in emails, where there is no request to read it from. */
+export function appOrigin(): string {
+  return (
+    process.env.PUBLIC_BASE_URL ??
+    process.env.BETTER_AUTH_URL ??
+    'http://localhost:3000'
+  ).replace(/\/$/, '');
+}

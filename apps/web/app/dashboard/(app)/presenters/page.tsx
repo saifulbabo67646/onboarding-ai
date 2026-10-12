@@ -12,14 +12,16 @@ import {
 } from '@/components/ui';
 import { formatRelative } from '@/lib/format';
 import { getStore } from '@/lib/server/store';
+import { requireViewer } from '@/lib/server/viewer';
 
 export const metadata = { title: 'Presenters' };
 
 export default async function PresentersPage() {
+  const { workspace } = await requireViewer();
   const store = getStore();
   const [agents, sessions] = await Promise.all([
-    store.listAgents(),
-    store.listSessions(undefined, 1000),
+    store.listAgents(workspace.id),
+    store.listSessions(workspace.id, { limit: 1000 }),
   ]);
   const counts = new Map<string, { total: number; last?: string }>();
   for (const s of sessions) {

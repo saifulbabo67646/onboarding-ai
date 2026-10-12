@@ -4,16 +4,18 @@ import { SessionsTable } from '@/components/app/SessionsTable';
 import { Button, Card, CodeBlock, CopyField, DescriptionList, StatCard } from '@/components/ui';
 import { formatDuration } from '@/lib/format';
 import { getStore } from '@/lib/server/store';
+import { requireViewer } from '@/lib/server/viewer';
 import { publicOrigin } from '@/lib/server/urls';
 import { overviewStats } from '@/lib/sessions';
 import styles from './presenter.module.css';
 
 export default async function PresenterOverview({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { workspace } = await requireViewer();
   const store = getStore();
-  const agent = await store.getAgent(id);
+  const agent = await store.getAgent(workspace.id, id);
   if (!agent) notFound();
-  const sessions = await store.listSessions(id, 1000);
+  const sessions = await store.listSessions(workspace.id, { agentId: id, limit: 1000 });
   const stats = overviewStats([agent], sessions);
   const origin = await publicOrigin();
   const shareUrl = `${origin}/d/${agent.slug}`;

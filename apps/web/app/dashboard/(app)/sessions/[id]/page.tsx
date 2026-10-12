@@ -4,6 +4,7 @@ import { Transcript } from '@/components/app/Transcript';
 import { Card, DescriptionList, PageHeader } from '@/components/ui';
 import { formatDateTime, formatDuration } from '@/lib/format';
 import { getStore } from '@/lib/server/store';
+import { requireViewer } from '@/lib/server/viewer';
 import { sessionDuration, sessionStatus } from '@/lib/sessions';
 import styles from './session.module.css';
 
@@ -11,10 +12,11 @@ export const metadata = { title: 'Session' };
 
 export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { workspace } = await requireViewer();
   const store = getStore();
-  const session = await store.getSession(id);
+  const session = await store.getSession(workspace.id, id);
   if (!session) notFound();
-  const agent = await store.getAgent(session.agentId);
+  const agent = await store.getAgent(workspace.id, session.agentId);
   const presenterName = agent?.presenterName ?? 'Presenter';
   const status = sessionStatus(session);
 

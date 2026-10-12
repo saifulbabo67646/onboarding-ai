@@ -1,7 +1,7 @@
 import { MousePointerClick } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { formatClock } from '@/lib/format';
-import type { DemoSession, SessionEvent } from '@/lib/types';
+import type { DemoSessionDetail, SessionEvent } from '@/lib/types';
 import styles from './Transcript.module.css';
 
 const QUIET_TOOLS = new Set(['say', 'screenshot', 'zoom', 'cursor_position', 'wait', 'listen']);
@@ -33,7 +33,7 @@ export function Transcript({
   session,
   presenterName,
 }: {
-  session: DemoSession;
+  session: DemoSessionDetail;
   presenterName: string;
 }) {
   const items = session.events.flatMap((e, i) => {

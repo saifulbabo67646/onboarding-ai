@@ -2,6 +2,7 @@ import { FilterLinks } from '@/components/app/FilterLinks';
 import { SessionsTable } from '@/components/app/SessionsTable';
 import { Card, PageHeader } from '@/components/ui';
 import { getStore } from '@/lib/server/store';
+import { requireViewer } from '@/lib/server/viewer';
 import { sessionStatus, type SessionStatus } from '@/lib/sessions';
 
 export const metadata = { title: 'Sessions' };
@@ -19,10 +20,11 @@ export default async function SessionsPage({
   searchParams: Promise<{ status?: string }>;
 }) {
   const { status = 'all' } = await searchParams;
+  const { workspace } = await requireViewer();
   const store = getStore();
   const [agents, sessions] = await Promise.all([
-    store.listAgents(),
-    store.listSessions(undefined, 1000),
+    store.listAgents(workspace.id),
+    store.listSessions(workspace.id, { limit: 1000 }),
   ]);
   const statuses = sessions.map((s) => sessionStatus(s));
   const active = FILTERS.find((f) => f.key === status) ?? FILTERS[0];

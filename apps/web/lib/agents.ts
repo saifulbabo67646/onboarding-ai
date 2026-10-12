@@ -1,6 +1,6 @@
 import type { DemoAgent, DemoMode, PublicAgent, Secret } from './types';
 
-export type AgentInput = Omit<DemoAgent, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
+export type AgentInput = Omit<DemoAgent, 'id' | 'workspaceId' | 'slug' | 'createdAt' | 'updatedAt'>;
 
 export class ValidationError extends Error {}
 

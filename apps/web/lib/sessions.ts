@@ -7,10 +7,7 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 export function sessionStatus(session: DemoSession, now = Date.now()): SessionStatus {
   if (session.state === 'ended') {
-    const failed = session.events.some(
-      (e) => e.type === 'status' && e.data.state === 'ended' && e.data.reason === 'dispatch failed',
-    );
-    return failed ? 'failed' : 'ended';
+    return session.endReason === 'dispatch failed' ? 'failed' : 'ended';
   }
   if (now - Date.parse(session.startedAt) > STALE_AFTER_MS) return 'ended';
   return session.state === 'presenting' ? 'live' : 'connecting';
@@ -22,14 +19,9 @@ export function sessionDuration(session: DemoSession, now = Date.now()): number 
   let end: number;
   if (session.endedAt) end = Date.parse(session.endedAt);
   else if (sessionStatus(session, now) === 'ended') {
-    const last = session.events.at(-1);
-    end = last ? last.ts * 1000 : start;
+    end = session.lastEventAt ? Date.parse(session.lastEventAt) : start;
   } else end = now;
   return Math.max(0, Math.round((end - start) / 1000));
-}
-
-export function transcriptLines(session: DemoSession) {
-  return session.events.filter((e) => e.type === 'say' || e.type === 'heard').length;
 }
 
 export type OverviewStats = {

@@ -17,7 +17,7 @@ import {
 import type { DemoAgent, DemoMode, Secret } from '@/lib/types';
 import styles from './PresenterForm.module.css';
 
-type FormState = Omit<DemoAgent, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
+type FormState = Omit<DemoAgent, 'id' | 'workspaceId' | 'slug' | 'createdAt' | 'updatedAt'>;
 
 const EMPTY: FormState = {
   name: '',
@@ -61,7 +61,13 @@ const GOAL_PLACEHOLDER: Record<DemoMode, string> = {
 /** Create or edit a presenter. Used by the "New presenter" and "Settings" pages. */
 export function PresenterForm({ initial }: { initial?: DemoAgent }) {
   const router = useRouter();
-  const start = useMemo<FormState>(() => (initial ? { ...initial } : EMPTY), [initial]);
+  const start = useMemo<FormState>(() => {
+    if (!initial) return EMPTY;
+    const editable: Partial<DemoAgent> = { ...initial };
+    for (const key of ['id', 'workspaceId', 'slug', 'createdAt', 'updatedAt'] as const)
+      delete editable[key];
+    return editable as FormState;
+  }, [initial]);
   const [form, setForm] = useState<FormState>(start);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

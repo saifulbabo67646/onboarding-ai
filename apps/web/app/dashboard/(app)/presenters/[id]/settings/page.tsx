@@ -3,10 +3,12 @@ import { DeletePresenter } from '@/components/app/DeletePresenter';
 import { PresenterForm } from '@/components/app/PresenterForm';
 import { toOwnerView } from '@/lib/agents';
 import { getStore } from '@/lib/server/store';
+import { requireViewer } from '@/lib/server/viewer';
 
 export default async function PresenterSettings({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const agent = await getStore().getAgent(id);
+  const { workspace } = await requireViewer();
+  const agent = await getStore().getAgent(workspace.id, id);
   if (!agent) notFound();
   return (
     <div className="stack-lg content-narrow">

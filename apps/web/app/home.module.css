@@ -1,0 +1,106 @@
+.main {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--space-6) var(--space-16);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-16) 0 var(--space-12);
+}
+
+.title {
+  margin: var(--space-5) 0 0;
+  font-size: var(--text-display);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
+.title span {
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.lead {
+  max-width: 620px;
+  margin: var(--space-5) auto var(--space-8);
+  font-size: var(--text-lg);
+  color: var(--color-text-secondary);
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-12);
+}
+
+.step {
+  padding: var(--space-5);
+  border-left: 2px solid var(--color-accent);
+}
+
+.step h3,
+.feature h3 {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-md);
+}
+
+.step p,
+.feature p {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.stepNumber {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-accent);
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.feature {
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.featureIcon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.footer {
+  padding: var(--space-6);
+  border-top: 1px solid var(--color-border);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 860px) {
+  .steps,
+  .features {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,3 +1,4 @@
+import '@fontsource-variable/inter';
 import '@livekit/components-styles';
 import '../styles/globals.css';
 import type { Metadata, Viewport } from 'next';
@@ -13,13 +14,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0b0d12',
+  themeColor: '#0a0c10',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body data-lk-theme="default">{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

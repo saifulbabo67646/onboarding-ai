@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { JoinDemo } from '@/components/JoinDemo';
+import { JoinDemo } from '@/components/live/JoinDemo';
 import { toPublic } from '@/lib/agents';
 import { getStore } from '@/lib/server/store';
 

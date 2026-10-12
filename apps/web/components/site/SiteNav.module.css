@@ -1,0 +1,18 @@
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(10, 12, 16, 0.85);
+  backdrop-filter: blur(10px);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: var(--content-max);
+  height: 60px;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}

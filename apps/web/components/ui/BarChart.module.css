@@ -1,0 +1,95 @@
+.figure {
+  margin: 0;
+}
+
+.plot {
+  position: relative;
+  margin-left: 28px;
+}
+
+.grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.tick {
+  position: absolute;
+  left: -28px;
+  top: -8px;
+  width: 22px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.slot {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+
+.slot:hover,
+.slot:focus-visible {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.bar {
+  width: 100%;
+  background: var(--color-accent);
+  border-radius: 4px 4px 0 0;
+}
+
+.tooltip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-xs);
+  color: var(--color-text);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.tooltip span {
+  color: var(--color-text-muted);
+}
+
+.axis {
+  display: flex;
+  gap: 2px;
+  margin: var(--space-2) 0 0 28px;
+}
+
+.axis span {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}

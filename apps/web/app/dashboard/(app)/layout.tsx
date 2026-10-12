@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { AppShell } from '@/components/app/AppShell';
-import { authEnabled } from '@/lib/server/auth';
+import { requireViewer } from '@/lib/server/viewer';
 import { getStore } from '@/lib/server/store';
 import { sessionStatus } from '@/lib/sessions';
 
@@ -11,10 +11,11 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const sessions = await getStore().listSessions(undefined, 200);
+  const viewer = await requireViewer();
+  const sessions = await getStore().listSessions(viewer.workspace.id, { limit: 200 });
   const live = sessions.filter((s) => ['live', 'connecting'].includes(sessionStatus(s))).length;
   return (
-    <AppShell canSignOut={authEnabled()} liveCount={live}>
+    <AppShell viewer={viewer} liveCount={live}>
       {children}
     </AppShell>
   );

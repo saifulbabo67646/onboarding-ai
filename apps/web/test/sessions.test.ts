@@ -10,12 +10,13 @@ function session(over: Partial<DemoSession> = {}): DemoSession {
   return {
     id: Math.random().toString(36),
     agentId: 'a1',
+    workspaceId: 'w1',
     room: 'r',
     visitorName: 'Sam',
     state: 'ended',
     startedAt: minutesAgo(30),
     endedAt: minutesAgo(20),
-    events: [],
+    messageCount: 0,
     ...over,
   };
 }
@@ -30,15 +31,19 @@ describe('sessionStatus', () => {
   });
 
   it('marks failed dispatches', () => {
-    const failed = session({
-      events: [{ type: 'status', data: { state: 'ended', reason: 'dispatch failed' }, ts: 0 }],
-    });
+    const failed = session({ endReason: 'dispatch failed' });
     expect(sessionStatus(failed, NOW)).toBe('failed');
   });
 
   it('treats sessions that never reported an end as ended after a while', () => {
-    const stale = session({ state: 'presenting', startedAt: minutesAgo(600), endedAt: undefined });
+    const stale = session({
+      state: 'presenting',
+      startedAt: minutesAgo(600),
+      endedAt: undefined,
+      lastEventAt: minutesAgo(590),
+    });
     expect(sessionStatus(stale, NOW)).toBe('ended');
+    expect(sessionDuration(stale, NOW)).toBe(600);
   });
 });
 

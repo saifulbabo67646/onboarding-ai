@@ -2,7 +2,11 @@
 
 Next.js app with three surfaces:
 
-- **Dashboard** (`/dashboard`, password-protected with `DASHBOARD_PASSWORD`) - an overview with
+- **Accounts** (`/signup`, `/login`, `/forgot-password`, `/invite/<id>`) - email and password or
+  Google, via [Better Auth](https://better-auth.com). Every user has one or more **workspaces**
+  (Better Auth organizations) with owner, admin and member roles; workspace settings live at
+  `/dashboard/settings`.
+- **Dashboard** (`/dashboard`, signed-in users, scoped to the active workspace) - an overview with
   live sessions, weekly stats and a sessions-per-day chart; presenters (each with overview,
   sessions and settings tabs: goal, start URL or slide deck, persona, voice, time limit,
   whiteboard, secrets); and all sessions with filters and full transcripts.
@@ -20,7 +24,8 @@ API:
 
 | Route                                                    |                                                                |
 | -------------------------------------------------------- | -------------------------------------------------------------- |
-| `GET/POST /api/agents`, `GET/PUT/DELETE /api/agents/:id` | Owner CRUD (secret values are write-only)                      |
+| `GET/POST /api/agents`, `GET/PUT/DELETE /api/agents/:id` | Workspace CRUD (secret values are write-only)                  |
+| `/api/auth/*`                                            | Better Auth (sign-in, Google callback, organizations, invites) |
 | `POST /api/demo/:slug/join`                              | Creates a room, dispatches the worker, returns a visitor token |
 | `POST /api/sessions/:id/events`                          | Worker reports (Bearer `AGENT_CALLBACK_SECRET`)                |
 
@@ -53,12 +58,19 @@ Rules that keep the UI consistent:
 - **Styles are scoped.** Each component has a CSS module; `globals.css` holds only the reset,
   base typography and a handful of layout utilities (`stack`, `row`, `grid-2`, ...).
 
-Storage is a JSON file (`DATA_DIR`, default `./.data`) behind the `Store` interface in
-`lib/server/store.ts` - implement it to use a database.
+## Data
+
+Postgres through [Drizzle](https://orm.drizzle.team). `lib/server/db/auth-schema.ts` holds the
+Better Auth tables (generated with `pnpm auth:generate`), `app-schema.ts` the app's own:
+`presenter`, `demo_session` and `session_event`, all tied to a workspace and deleted with it.
+`lib/server/store.ts` is the only code that reads or writes them, and every dashboard method
+takes the workspace id. SQL migrations live in `drizzle/` and run on start (`instrumentation.ts`).
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env.local      # DATABASE_URL, BETTER_AUTH_SECRET, LiveKit keys, ...
 pnpm install
-pnpm dev          # http://localhost:3000
-pnpm test && pnpm lint && pnpm typecheck
+pnpm dev                        # http://localhost:3000/signup
+pnpm db:generate                # after changing app-schema.ts: writes a new migration
+TEST_DATABASE_URL=postgres://localhost/onboard_test pnpm test   # store tests need a throwaway DB
+pnpm lint && pnpm typecheck
 ```

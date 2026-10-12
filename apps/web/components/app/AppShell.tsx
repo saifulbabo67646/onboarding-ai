@@ -1,27 +1,31 @@
 'use client';
 
-import { BookOpen, LayoutDashboard, LogOut, Menu, Presentation, Radio, X } from 'lucide-react';
+import { LayoutDashboard, Menu, Presentation, Radio, Settings, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Logo } from '@/components/ui';
 import { cx } from '@/lib/cx';
+import type { Viewer } from '@/lib/types';
+import { UserMenu } from './UserMenu';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import styles from './AppShell.module.css';
 
 const NAV = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard, exact: true },
   { href: '/dashboard/presenters', label: 'Presenters', icon: Presentation },
   { href: '/dashboard/sessions', label: 'Sessions', icon: Radio },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
 /** Dashboard frame: sidebar navigation on desktop, a drawer on mobile. */
 export function AppShell({
   children,
-  canSignOut,
+  viewer,
   liveCount,
 }: {
   children: ReactNode;
-  canSignOut: boolean;
+  viewer: Viewer;
   liveCount: number;
 }) {
   const pathname = usePathname();
@@ -50,6 +54,7 @@ export function AppShell({
         <div className={styles.brand}>
           <Logo href="/dashboard" />
         </div>
+        <WorkspaceSwitcher viewer={viewer} />
         <nav className={styles.nav} aria-label="Main">
           {NAV.map(({ href, label, icon: Icon, exact }) => (
             <Link
@@ -69,23 +74,7 @@ export function AppShell({
           ))}
         </nav>
         <div className={styles.footer}>
-          <a
-            className={styles.navItem}
-            href="https://github.com/saifulbabo67646/onboarding-ai"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <BookOpen size={16} aria-hidden />
-            Documentation
-          </a>
-          {canSignOut && (
-            <form action="/api/auth/logout" method="post">
-              <button type="submit" className={styles.navItem}>
-                <LogOut size={16} aria-hidden />
-                Sign out
-              </button>
-            </form>
-          )}
+          <UserMenu user={viewer.user} />
         </div>
       </aside>
       {open && <div className={styles.scrim} onClick={() => setOpen(false)} aria-hidden />}

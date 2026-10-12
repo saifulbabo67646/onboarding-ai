@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Script from 'next/script';
 import { Alert } from '@/components/ui';
 import { getStore } from '@/lib/server/store';
+import { requireViewer } from '@/lib/server/viewer';
 import styles from './preview.module.css';
 
 export const metadata: Metadata = { title: 'Widget preview' };
@@ -11,7 +12,8 @@ export const dynamic = 'force-dynamic';
 /** A stand-in for the owner's website, with the widget installed exactly as in the snippet. */
 export default async function WidgetPreview({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const agent = await getStore().getAgent(id);
+  const { workspace } = await requireViewer(`/dashboard/preview/${id}`);
+  const agent = await getStore().getAgent(workspace.id, id);
   if (!agent) notFound();
   return (
     <div className={styles.site}>

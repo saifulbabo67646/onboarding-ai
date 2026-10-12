@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { ModeBadge, PresenterStatusBadge } from '@/components/app/StatusBadges';
 import { Button, PageHeader, Tabs } from '@/components/ui';
 import { getStore } from '@/lib/server/store';
+import { requireViewer } from '@/lib/server/viewer';
 
 /** Shared header and tabs for every page of one presenter. */
 export default async function PresenterLayout({
@@ -14,10 +15,11 @@ export default async function PresenterLayout({
   children: ReactNode;
 }) {
   const { id } = await params;
+  const { workspace } = await requireViewer();
   const store = getStore();
-  const agent = await store.getAgent(id);
+  const agent = await store.getAgent(workspace.id, id);
   if (!agent) notFound();
-  const sessions = await store.listSessions(id, 1000);
+  const sessions = await store.listSessions(workspace.id, { agentId: id, limit: 1000 });
   const base = `/dashboard/presenters/${id}`;
   return (
     <>

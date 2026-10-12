@@ -2,20 +2,21 @@ import { Clock, Plus, Presentation, Radio, Users } from 'lucide-react';
 import Link from 'next/link';
 import { SessionsTable } from '@/components/app/SessionsTable';
 import { ModeBadge } from '@/components/app/StatusBadges';
-import { Alert, BarChart, Button, Card, EmptyState, PageHeader, StatCard } from '@/components/ui';
+import { BarChart, Button, Card, EmptyState, PageHeader, StatCard } from '@/components/ui';
 import { formatDuration } from '@/lib/format';
-import { authEnabled } from '@/lib/server/auth';
 import { getStore } from '@/lib/server/store';
+import { requireViewer } from '@/lib/server/viewer';
 import { overviewStats } from '@/lib/sessions';
 import styles from './overview.module.css';
 
 export const metadata = { title: 'Overview' };
 
 export default async function OverviewPage() {
+  const { workspace } = await requireViewer();
   const store = getStore();
   const [agents, sessions] = await Promise.all([
-    store.listAgents(),
-    store.listSessions(undefined, 1000),
+    store.listAgents(workspace.id),
+    store.listSessions(workspace.id, { limit: 1000 }),
   ]);
   const stats = overviewStats(agents, sessions);
   const perAgent = new Map<string, number>();
@@ -38,12 +39,6 @@ export default async function OverviewPage() {
       />
 
       <div className="stack-lg">
-        {!authEnabled() && (
-          <Alert tone="warning" title="The dashboard is not password protected">
-            Set <code>DASHBOARD_PASSWORD</code> before deploying.
-          </Alert>
-        )}
-
         {agents.length === 0 ? (
           <Card>
             <EmptyState

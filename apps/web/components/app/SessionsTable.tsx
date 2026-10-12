@@ -2,7 +2,7 @@ import { Radio } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar, EmptyState, Table, tableStyles as t } from '@/components/ui';
 import { formatDuration, formatRelative } from '@/lib/format';
-import { sessionDuration, sessionStatus, transcriptLines } from '@/lib/sessions';
+import { sessionDuration, sessionStatus } from '@/lib/sessions';
 import type { DemoAgent, DemoSession } from '@/lib/types';
 import { SessionStatusBadge } from './StatusBadges';
 
@@ -62,7 +62,7 @@ export function SessionsTable({
               {formatRelative(s.startedAt)}
             </td>
             <td className={`${t.numeric} ${t.muted}`}>{formatDuration(sessionDuration(s))}</td>
-            <td className={`${t.numeric} ${t.muted}`}>{transcriptLines(s)}</td>
+            <td className={`${t.numeric} ${t.muted}`}>{s.messageCount}</td>
           </tr>
         ))}
       </tbody>

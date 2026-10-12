@@ -51,8 +51,8 @@ the way a colleague would.
 3. The worker provisions a **sandbox** - an isolated virtual desktop with a real, headful
    Chromium - and publishes it as its screen share.
 4. The **director** (Claude with the computer-use toolset) sees screenshots, decides what to
-   show and say, and drives the sandbox. Tool calls run *while the response is still
-   streaming*, so speech and motion start early and overlap like a person talking while working.
+   show and say, and drives the sandbox. Tool calls run _while the response is still
+   streaming_, so speech and motion start early and overlap like a person talking while working.
 5. Every mouse and keyboard action is injected as genuine OS input through XTEST, shaped by the
    **humanize** models. The cursor the audience sees is the real X cursor (arrow, hand, I-beam).
 
@@ -61,17 +61,17 @@ the way a colleague would.
 Every piece is a standalone package with its own README, tests and license, so each can be used
 (and open-sourced) on its own:
 
-| Path | Package | What it is |
-| --- | --- | --- |
-| [`packages/humanize`](packages/humanize) | `onboard-humanize` | Pure-Python models of human pointing, gestures, typing and scrolling. Zero dependencies. |
-| [`packages/sandbox`](packages/sandbox) | `onboard-sandbox` | Virtual desktop server (Xvfb + Chromium) with human-like XTEST input, screenshots and a live JPEG stream; async client; local/Docker/static provisioning. |
-| [`packages/director`](packages/director) | `onboard-director` | The presenting loop: Claude computer use + narration, pointing, whiteboard sketching, secrets, listening and interruptions. Platform-agnostic. |
-| [`apps/agent`](apps/agent) | `onboard-agent` | LiveKit worker that glues it together: voice in/out, screen share, per-session sandbox. |
-| [`apps/web`](apps/web) | `onboard-web` | Next.js dashboard, public demo pages and the meeting room. |
+| Path                                     | Package            | What it is                                                                                                                                                |
+| ---------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`packages/humanize`](packages/humanize) | `onboard-humanize` | Pure-Python models of human pointing, gestures, typing and scrolling. Zero dependencies.                                                                  |
+| [`packages/sandbox`](packages/sandbox)   | `onboard-sandbox`  | Virtual desktop server (Xvfb + Chromium) with human-like XTEST input, screenshots and a live JPEG stream; async client; local/Docker/static provisioning. |
+| [`packages/director`](packages/director) | `onboard-director` | The presenting loop: Claude computer use + narration, pointing, whiteboard sketching, secrets, listening and interruptions. Platform-agnostic.            |
+| [`apps/agent`](apps/agent)               | `onboard-agent`    | LiveKit worker that glues it together: voice in/out, screen share, per-session sandbox.                                                                   |
+| [`apps/web`](apps/web)                   | `onboard-web`      | Next.js dashboard, public demo pages and the meeting room.                                                                                                |
 
 ## Quick start (local, Linux)
 
-Requirements: Python 3.10+, Node 22 + pnpm, `Xvfb` and Chromium (or Chrome), and accounts for
+Requirements: Python 3.10+, Node 22 + pnpm, Postgres 14+, `Xvfb` and Chromium (or Chrome), and accounts for
 [LiveKit](https://cloud.livekit.io), [Anthropic](https://console.anthropic.com),
 [Deepgram](https://deepgram.com) and [ElevenLabs](https://elevenlabs.io).
 
@@ -85,12 +85,29 @@ pip install -e packages/humanize -e "packages/sandbox[server]" -e packages/direc
 onboard-agent download-files    # VAD model
 onboard-agent dev               # run the worker (reads .env)
 
-# Web side (another terminal)
-cd apps/web && pnpm install && pnpm dev
+# Web side (another terminal). Any Postgres works; this one-liner is the quickest.
+docker run -d --name onboard-db -p 5432:5432 -e POSTGRES_USER=onboard \
+  -e POSTGRES_PASSWORD=onboard -e POSTGRES_DB=onboard postgres:17-alpine
+cd apps/web && pnpm install && pnpm dev   # applies migrations on start
 ```
 
-Open <http://localhost:3000/dashboard>, create a presenter, then open its share link in another
-browser window and join.
+Open <http://localhost:3000/signup>, create your account (you get a personal workspace), create a
+presenter, then open its share link in another browser window and join.
+
+### Accounts and workspaces
+
+- Sign in with **email and password** or **Google** (shown when `GOOGLE_CLIENT_ID` and
+  `GOOGLE_CLIENT_SECRET` are set). Create an OAuth client of type _Web application_ in Google
+  Cloud and add `<BETTER_AUTH_URL>/api/auth/callback/google` as an authorized redirect URI.
+  Signing in with Google on an email that already has a password links the two.
+- Everything (presenters, sessions, transcripts) belongs to a **workspace**. Each user starts with
+  a personal one and can create more from the workspace switcher.
+- **Owners** and **admins** invite people by email (Settings → Invite people), change roles and
+  remove members; **members** create and edit presenters. Without an email provider the invite
+  link is shown to copy and printed to the server log; set `RESEND_API_KEY` and `EMAIL_FROM` to
+  send invitations and password-reset emails.
+- Upgrading from the JSON file store? `pnpm db:import-json --email you@company.com` copies your
+  presenters (and their share links) into your workspace.
 
 ### Try the presenter without a meeting
 
@@ -119,21 +136,28 @@ dispatches across workers.
 
 ## Configuration
 
-| Variable | Used by | Purpose |
-| --- | --- | --- |
-| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | web, agent | Meetings |
-| `ANTHROPIC_API_KEY` | agent | The director |
-| `DIRECTOR_MODEL` / `DIRECTOR_EFFORT` | agent | Model (default `claude-opus-5-5`) and effort (default `medium`, a latency trade-off for live calls) |
-| `DEEPGRAM_API_KEY`, `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` | agent | Speech-to-text and voice |
-| `DASHBOARD_PASSWORD` | web | Owner login (dashboard is open when unset) |
-| `AGENT_CALLBACK_SECRET` | web, agent | Authenticates transcript/status reports |
-| `SANDBOX_PROVIDER` | agent | `local`, `docker` or `static` |
-| `SANDBOX_SIZE` | agent, sandbox | Desktop resolution (default `1280x800`) |
+| Variable                                                                                  | Used by        | Purpose                                                                                             |
+| ----------------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------- |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`                                    | web, agent     | Meetings                                                                                            |
+| `ANTHROPIC_API_KEY`                                                                       | agent          | The director                                                                                        |
+| `DIRECTOR_MODEL` / `DIRECTOR_EFFORT`                                                      | agent          | Model (default `claude-opus-5-5`) and effort (default `medium`, a latency trade-off for live calls) |
+| `DEEPGRAM_API_KEY`, `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID`                                   | agent          | Speech-to-text and voice                                                                            |
+| `DATABASE_URL`                                                                            | web            | Postgres connection string (migrations run on start; `DATABASE_AUTO_MIGRATE=0` to opt out)          |
+| `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`                                                   | web            | Session signing secret and the dashboard's public URL                                               |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                | web            | Optional Google sign-in                                                                             |
+| `SECRETS_ENCRYPTION_KEY`                                                                  | web            | 32-byte base64 key encrypting presenter secrets at rest (required in production)                    |
+| `RESEND_API_KEY`, `EMAIL_FROM`                                                            | web            | Optional email for invitations and password resets                                                  |
+| `JOIN_LIMIT_PER_IP`, `JOIN_LIMIT_WINDOW_MINUTES`, `MAX_CONCURRENT_SESSIONS_PER_PRESENTER` | web            | Abuse limits on public join links (defaults 6 per 10 min, 10 concurrent)                            |
+| `AGENT_CALLBACK_SECRET`                                                                   | web, agent     | Authenticates transcript/status reports                                                             |
+| `SANDBOX_PROVIDER`                                                                        | agent          | `local`, `docker` or `static`                                                                       |
+| `SANDBOX_SIZE`                                                                            | agent, sandbox | Desktop resolution (default `1280x800`)                                                             |
 
 ## Safety notes
 
 - Each session runs in its own disposable desktop. Nothing persists between visitors.
-- Secrets are stored server-side, never sent to the model or the browser, and typed without
+- Dashboard data is scoped to a workspace on every query; members of one workspace can't read or
+  change another's presenters or sessions.
+- Secrets are encrypted at rest (AES-256-GCM), stored server-side, never sent to the model or the browser, and typed without
   typos. Use a dedicated demo account.
 - The presenter is instructed to stay on the goal, avoid payment forms and destructive actions.
   Treat the demo account as something a curious visitor could see.

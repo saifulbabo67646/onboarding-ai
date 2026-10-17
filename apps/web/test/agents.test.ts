@@ -67,6 +67,7 @@ describe('views', () => {
   const agent: DemoAgent = {
     ...parseAgentInput({ ...valid, secrets: [{ name: 'password', value: 'hunter2' }] }),
     id: 'a1',
+    workspaceId: 'w1',
     slug: 'dashboard-tour',
     createdAt: '',
     updatedAt: '',

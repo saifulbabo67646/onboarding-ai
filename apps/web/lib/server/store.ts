@@ -1,254 +1,386 @@
 import 'server-only';
-import { randomBytes, randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { randomBytes } from 'crypto';
+import { and, asc, count, desc, eq, gte, inArray } from 'drizzle-orm';
 import { slugify, type AgentInput } from '../agents';
 import { applyResearchEvent } from '../research';
 import type {
   DemoAgent,
   DemoSession,
+  DemoSessionDetail,
+  ResearchDraft,
   ResearchInput,
   ResearchJob,
+  ResearchPhase,
+  ResearchState,
   SessionEvent,
   SessionState,
 } from '../types';
+import { getDb, type Database } from './db/client';
+import { demoSession, presenter, researchJob, sessionEvent } from './db/schema';
+import { decryptSecret, encryptSecret } from './secrets';
 
 /**
- * Persistence for agents and sessions. The default implementation is a JSON
- * file (zero setup, fine for a single web instance); swap in a database by
- * implementing this interface and returning it from `getStore()`.
+ * All persistence goes through this class. Every dashboard read and write is
+ * scoped by `workspaceId`, so one workspace can never see another's data.
+ * The only unscoped lookups are the public ones (by slug, for visitors) and
+ * the worker and researcher callbacks (by id, authenticated with a shared secret).
  */
-export interface Store {
-  listAgents(): Promise<DemoAgent[]>;
-  getAgent(id: string): Promise<DemoAgent | undefined>;
-  getAgentBySlug(slug: string): Promise<DemoAgent | undefined>;
-  createAgent(input: AgentInput): Promise<DemoAgent>;
-  updateAgent(id: string, input: AgentInput): Promise<DemoAgent | undefined>;
-  deleteAgent(id: string): Promise<boolean>;
-  createSession(agentId: string, room: string, visitorName: string): Promise<DemoSession>;
-  getSession(id: string): Promise<DemoSession | undefined>;
-  listSessions(agentId?: string, limit?: number): Promise<DemoSession[]>;
-  appendSessionEvents(id: string, events: SessionEvent[]): Promise<DemoSession | undefined>;
-  createResearchJob(agentId: string, input: ResearchInput): Promise<ResearchJob>;
-  getResearchJob(id: string): Promise<ResearchJob | undefined>;
-  latestResearchJob(agentId: string): Promise<ResearchJob | undefined>;
-  appendResearchEvents(id: string, events: SessionEvent[]): Promise<ResearchJob | undefined>;
-  updateResearchJob(
+export class Store {
+  constructor(private readonly db: Database) {}
+
+  // ── Presenters ─────────────────────────────────────────────
+
+  async listAgents(workspaceId: string): Promise<DemoAgent[]> {
+    const rows = await this.db
+      .select()
+      .from(presenter)
+      .where(eq(presenter.organizationId, workspaceId))
+      .orderBy(desc(presenter.updatedAt));
+    return rows.map(toAgent);
+  }
+
+  async getAgent(workspaceId: string, id: string): Promise<DemoAgent | undefined> {
+    if (!isUuid(id)) return undefined;
+    const [row] = await this.db
+      .select()
+      .from(presenter)
+      .where(and(eq(presenter.id, id), eq(presenter.organizationId, workspaceId)));
+    return row && toAgent(row);
+  }
+
+  /** Public lookup for the visitor join page and widget. */
+  async getAgentBySlug(slug: string): Promise<DemoAgent | undefined> {
+    const [row] = await this.db.select().from(presenter).where(eq(presenter.slug, slug));
+    return row && toAgent(row);
+  }
+
+  async createAgent(
+    workspaceId: string,
+    userId: string | null,
+    input: AgentInput,
+  ): Promise<DemoAgent> {
+    const base = slugify(input.name);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const slug = attempt === 0 ? base : `${base}-${randomBytes(2).toString('hex')}`;
+      const [row] = await this.db
+        .insert(presenter)
+        .values({ ...fromInput(input), organizationId: workspaceId, createdBy: userId, slug })
+        .onConflictDoNothing({ target: presenter.slug })
+        .returning();
+      if (row) return toAgent(row);
+    }
+    throw new Error('Could not allocate a unique slug');
+  }
+
+  async updateAgent(
+    workspaceId: string,
     id: string,
-    patch: Partial<Omit<ResearchJob, 'id' | 'agentId'>>,
-  ): Promise<ResearchJob | undefined>;
+    input: AgentInput,
+  ): Promise<DemoAgent | undefined> {
+    if (!isUuid(id)) return undefined;
+    const [row] = await this.db
+      .update(presenter)
+      .set({ ...fromInput(input), updatedAt: new Date() })
+      .where(and(eq(presenter.id, id), eq(presenter.organizationId, workspaceId)))
+      .returning();
+    return row && toAgent(row);
+  }
+
+  async deleteAgent(workspaceId: string, id: string): Promise<boolean> {
+    if (!isUuid(id)) return false;
+    const rows = await this.db
+      .delete(presenter)
+      .where(and(eq(presenter.id, id), eq(presenter.organizationId, workspaceId)))
+      .returning({ id: presenter.id });
+    return rows.length > 0;
+  }
+
+  // ── Sessions ───────────────────────────────────────────────
+
+  async createSession(
+    agent: DemoAgent,
+    room: string,
+    visitorName: string,
+    visitorIpHash: string | null,
+  ): Promise<DemoSession> {
+    const [row] = await this.db
+      .insert(demoSession)
+      .values({
+        presenterId: agent.id,
+        organizationId: agent.workspaceId,
+        room,
+        visitorName,
+        visitorIpHash,
+      })
+      .returning();
+    return toSession(row);
+  }
+
+  async listSessions(
+    workspaceId: string,
+    { agentId, limit = 50 }: { agentId?: string; limit?: number } = {},
+  ): Promise<DemoSession[]> {
+    if (agentId && !isUuid(agentId)) return [];
+    const rows = await this.db
+      .select()
+      .from(demoSession)
+      .where(
+        and(
+          eq(demoSession.organizationId, workspaceId),
+          agentId ? eq(demoSession.presenterId, agentId) : undefined,
+        ),
+      )
+      .orderBy(desc(demoSession.startedAt))
+      .limit(limit);
+    return rows.map(toSession);
+  }
+
+  async getSession(workspaceId: string, id: string): Promise<DemoSessionDetail | undefined> {
+    if (!isUuid(id)) return undefined;
+    const [row] = await this.db
+      .select()
+      .from(demoSession)
+      .where(and(eq(demoSession.id, id), eq(demoSession.organizationId, workspaceId)));
+    if (!row) return undefined;
+    const events = await this.db
+      .select()
+      .from(sessionEvent)
+      .where(eq(sessionEvent.sessionId, id))
+      .orderBy(asc(sessionEvent.ts), asc(sessionEvent.id));
+    return {
+      ...toSession(row),
+      events: events.map((e) => ({ type: e.type, data: e.data, ts: e.ts })),
+    };
+  }
+
+  /** Worker callback: store events and roll them up into the session row. */
+  async appendSessionEvents(id: string, events: SessionEvent[]): Promise<boolean> {
+    if (!isUuid(id)) return false;
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(demoSession).where(eq(demoSession.id, id)).for('update');
+      if (!row) return false;
+      if (events.length === 0) return true;
+      await tx.insert(sessionEvent).values(events.map((e) => ({ sessionId: id, ...e })));
+
+      const patch: Partial<typeof demoSession.$inferInsert> = {
+        messageCount:
+          row.messageCount + events.filter((e) => e.type === 'say' || e.type === 'heard').length,
+        lastEventAt: new Date(Math.max(...events.map((e) => e.ts)) * 1000),
+      };
+      for (const event of events) {
+        if (event.type === 'status') {
+          const state = event.data.state as SessionState | undefined;
+          if (state && ['starting', 'joined', 'presenting', 'ended'].includes(state))
+            patch.state = state;
+          if (state === 'ended') {
+            patch.endedAt = new Date(event.ts * 1000);
+            if (typeof event.data.reason === 'string') patch.endReason = event.data.reason;
+          }
+        } else if (event.type === 'summary' || event.type === 'end') {
+          const summary = event.data.summary;
+          if (typeof summary === 'string' && summary) patch.summary = summary;
+        }
+      }
+      await tx.update(demoSession).set(patch).where(eq(demoSession.id, id));
+      return true;
+    });
+  }
+
+  // ── AI research ────────────────────────────────────────────
+
+  async createResearchJob(agent: DemoAgent, input: ResearchInput): Promise<ResearchJob> {
+    const [row] = await this.db
+      .insert(researchJob)
+      .values({ presenterId: agent.id, organizationId: agent.workspaceId, ...input })
+      .returning();
+    // Keep a short history per presenter.
+    const older = await this.db
+      .select({ id: researchJob.id })
+      .from(researchJob)
+      .where(eq(researchJob.presenterId, agent.id))
+      .orderBy(desc(researchJob.startedAt))
+      .offset(MAX_RESEARCH_JOBS_PER_PRESENTER);
+    if (older.length > 0) {
+      await this.db.delete(researchJob).where(
+        inArray(
+          researchJob.id,
+          older.map((o) => o.id),
+        ),
+      );
+    }
+    return toResearchJob(row);
+  }
+
+  async latestResearchJob(workspaceId: string, agentId: string): Promise<ResearchJob | undefined> {
+    if (!isUuid(agentId)) return undefined;
+    const [row] = await this.db
+      .select()
+      .from(researchJob)
+      .where(and(eq(researchJob.presenterId, agentId), eq(researchJob.organizationId, workspaceId)))
+      .orderBy(desc(researchJob.startedAt))
+      .limit(1);
+    return row && toResearchJob(row);
+  }
+
+  /** Researcher callback: fold progress, warnings and the draft into the job. */
+  async appendResearchEvents(id: string, events: SessionEvent[]): Promise<ResearchJob | undefined> {
+    if (!isUuid(id)) return undefined;
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(researchJob).where(eq(researchJob.id, id)).for('update');
+      if (!row) return undefined;
+      const job = toResearchJob(row);
+      for (const event of events) applyResearchEvent(job, event);
+      const [updated] = await tx
+        .update(researchJob)
+        .set(researchPatch(job))
+        .where(eq(researchJob.id, id))
+        .returning();
+      return toResearchJob(updated);
+    });
+  }
+
+  async updateResearchJob(
+    workspaceId: string,
+    id: string,
+    patch: Pick<Partial<ResearchJob>, 'draft' | 'revisions' | 'appliedAt'>,
+  ): Promise<ResearchJob | undefined> {
+    if (!isUuid(id)) return undefined;
+    const set: Partial<typeof researchJob.$inferInsert> = {};
+    if ('draft' in patch) set.draft = (patch.draft ?? null) as Record<string, unknown> | null;
+    if ('revisions' in patch) set.revisions = patch.revisions;
+    if ('appliedAt' in patch) set.appliedAt = patch.appliedAt ? new Date(patch.appliedAt) : null;
+    const [row] = await this.db
+      .update(researchJob)
+      .set(set)
+      .where(and(eq(researchJob.id, id), eq(researchJob.organizationId, workspaceId)))
+      .returning();
+    return row && toResearchJob(row);
+  }
+
+  // ── Abuse limits for the public join endpoint ──────────────
+
+  async countJoinsFromIp(ipHash: string, since: Date): Promise<number> {
+    const [r] = await this.db
+      .select({ n: count() })
+      .from(demoSession)
+      .where(and(eq(demoSession.visitorIpHash, ipHash), gte(demoSession.startedAt, since)));
+    return r.n;
+  }
+
+  async countActiveSessions(agentId: string, since: Date): Promise<number> {
+    const [r] = await this.db
+      .select({ n: count() })
+      .from(demoSession)
+      .where(
+        and(
+          eq(demoSession.presenterId, agentId),
+          gte(demoSession.startedAt, since),
+          inArray(demoSession.state, ['starting', 'joined', 'presenting']),
+        ),
+      );
+    return r.n;
+  }
 }
 
-interface Data {
-  agents: DemoAgent[];
-  sessions: DemoSession[];
-  research: ResearchJob[];
-}
+// ── Mapping ────────────────────────────────────────────────
 
-const MAX_EVENTS_PER_SESSION = 2000;
-const MAX_SESSIONS = 1000;
-const MAX_RESEARCH_JOBS_PER_AGENT = 10;
+type PresenterRow = typeof presenter.$inferSelect;
+type SessionRow = typeof demoSession.$inferSelect;
+type ResearchRow = typeof researchJob.$inferSelect;
 
-/** Fill in fields added after a store file was first written. */
-function migrate(raw: Partial<Data>): Data {
+const MAX_RESEARCH_JOBS_PER_PRESENTER = 10;
+
+function fromInput(input: AgentInput) {
   return {
-    agents: (raw.agents ?? []).map((a) => ({ ...a, knowledge: a.knowledge ?? '' })),
-    sessions: raw.sessions ?? [],
-    research: raw.research ?? [],
+    ...input,
+    secrets: input.secrets.map((s) => ({ name: s.name, value: encryptSecret(s.value) })),
   };
 }
 
-export class JsonFileStore implements Store {
-  private cache: Data | null = null;
-  private queue: Promise<unknown> = Promise.resolve();
-
-  constructor(private readonly file: string) {}
-
-  private async load(): Promise<Data> {
-    if (this.cache) return this.cache;
-    try {
-      this.cache = migrate(JSON.parse(await fs.readFile(this.file, 'utf8')) as Partial<Data>);
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-      this.cache = migrate({});
-    }
-    return this.cache;
-  }
-
-  /** Serialises mutations and writes atomically (temp file + rename). */
-  private mutate<T>(fn: (data: Data) => T): Promise<T> {
-    const run = this.queue.then(async () => {
-      const data = await this.load();
-      const result = fn(data);
-      await fs.mkdir(path.dirname(this.file), { recursive: true });
-      const tmp = `${this.file}.${process.pid}.tmp`;
-      await fs.writeFile(tmp, JSON.stringify(data, null, 2));
-      await fs.rename(tmp, this.file);
-      return result;
-    });
-    this.queue = run.catch(() => undefined);
-    return run;
-  }
-
-  async listAgents() {
-    const data = await this.load();
-    return [...data.agents].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }
-
-  async getAgent(id: string) {
-    return (await this.load()).agents.find((a) => a.id === id);
-  }
-
-  async getAgentBySlug(slug: string) {
-    return (await this.load()).agents.find((a) => a.slug === slug);
-  }
-
-  createAgent(input: AgentInput) {
-    return this.mutate((data) => {
-      const now = new Date().toISOString();
-      let slug = slugify(input.name);
-      while (data.agents.some((a) => a.slug === slug)) {
-        slug = `${slugify(input.name)}-${randomBytes(2).toString('hex')}`;
-      }
-      const agent: DemoAgent = { ...input, id: randomUUID(), slug, createdAt: now, updatedAt: now };
-      data.agents.push(agent);
-      return agent;
-    });
-  }
-
-  updateAgent(id: string, input: AgentInput) {
-    return this.mutate((data) => {
-      const i = data.agents.findIndex((a) => a.id === id);
-      if (i < 0) return undefined;
-      data.agents[i] = { ...data.agents[i], ...input, updatedAt: new Date().toISOString() };
-      return data.agents[i];
-    });
-  }
-
-  deleteAgent(id: string) {
-    return this.mutate((data) => {
-      const before = data.agents.length;
-      data.agents = data.agents.filter((a) => a.id !== id);
-      data.sessions = data.sessions.filter((s) => s.agentId !== id);
-      data.research = data.research.filter((j) => j.agentId !== id);
-      return data.agents.length < before;
-    });
-  }
-
-  createSession(agentId: string, room: string, visitorName: string) {
-    return this.mutate((data) => {
-      const session: DemoSession = {
-        id: randomUUID(),
-        agentId,
-        room,
-        visitorName,
-        state: 'starting',
-        startedAt: new Date().toISOString(),
-        events: [],
-      };
-      data.sessions.push(session);
-      if (data.sessions.length > MAX_SESSIONS)
-        data.sessions.splice(0, data.sessions.length - MAX_SESSIONS);
-      return session;
-    });
-  }
-
-  async getSession(id: string) {
-    return (await this.load()).sessions.find((s) => s.id === id);
-  }
-
-  async listSessions(agentId?: string, limit = 50) {
-    const data = await this.load();
-    return data.sessions
-      .filter((s) => !agentId || s.agentId === agentId)
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
-      .slice(0, limit);
-  }
-
-  appendSessionEvents(id: string, events: SessionEvent[]) {
-    return this.mutate((data) => {
-      const session = data.sessions.find((s) => s.id === id);
-      if (!session) return undefined;
-      for (const event of events) {
-        applyEvent(session, event);
-      }
-      session.events.push(...events);
-      if (session.events.length > MAX_EVENTS_PER_SESSION) {
-        session.events.splice(0, session.events.length - MAX_EVENTS_PER_SESSION);
-      }
-      return session;
-    });
-  }
-
-  createResearchJob(agentId: string, input: ResearchInput) {
-    return this.mutate((data) => {
-      const job: ResearchJob = {
-        id: randomUUID(),
-        agentId,
-        ...input,
-        state: 'queued',
-        startedAt: new Date().toISOString(),
-        warnings: [],
-        events: [],
-        revisions: 0,
-      };
-      data.research.push(job);
-      const mine = data.research.filter((j) => j.agentId === agentId);
-      if (mine.length > MAX_RESEARCH_JOBS_PER_AGENT) {
-        const drop = new Set(mine.slice(0, mine.length - MAX_RESEARCH_JOBS_PER_AGENT));
-        data.research = data.research.filter((j) => !drop.has(j));
-      }
-      return job;
-    });
-  }
-
-  async getResearchJob(id: string) {
-    return (await this.load()).research.find((j) => j.id === id);
-  }
-
-  async latestResearchJob(agentId: string) {
-    return (await this.load()).research
-      .filter((j) => j.agentId === agentId)
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-  }
-
-  appendResearchEvents(id: string, events: SessionEvent[]) {
-    return this.mutate((data) => {
-      const job = data.research.find((j) => j.id === id);
-      if (!job) return undefined;
-      for (const event of events) applyResearchEvent(job, event);
-      return job;
-    });
-  }
-
-  updateResearchJob(id: string, patch: Partial<Omit<ResearchJob, 'id' | 'agentId'>>) {
-    return this.mutate((data) => {
-      const job = data.research.find((j) => j.id === id);
-      if (!job) return undefined;
-      Object.assign(job, patch);
-      return job;
-    });
-  }
+function toAgent(row: PresenterRow): DemoAgent {
+  return {
+    id: row.id,
+    workspaceId: row.organizationId,
+    slug: row.slug,
+    name: row.name,
+    mode: row.mode as DemoAgent['mode'],
+    goal: row.goal,
+    knowledge: row.knowledge,
+    startUrl: row.startUrl,
+    description: row.description,
+    presenterName: row.presenterName,
+    companyName: row.companyName,
+    greeting: row.greeting,
+    language: row.language,
+    voiceId: row.voiceId,
+    allowWhiteboard: row.allowWhiteboard,
+    maxMinutes: row.maxMinutes,
+    published: row.published,
+    secrets: row.secrets.map((s) => ({ name: s.name, value: decryptSecret(s.value) })),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }
 
-export function applyEvent(session: DemoSession, event: SessionEvent) {
-  if (event.type === 'status') {
-    const state = event.data.state as SessionState | undefined;
-    if (state && ['starting', 'joined', 'presenting', 'ended'].includes(state))
-      session.state = state;
-    if (state === 'ended') session.endedAt = new Date(event.ts * 1000).toISOString();
-  } else if (event.type === 'summary' || event.type === 'end') {
-    const summary = event.data.summary;
-    if (typeof summary === 'string' && summary) session.summary = summary;
-  }
+function toSession(row: SessionRow): DemoSession {
+  return {
+    id: row.id,
+    agentId: row.presenterId,
+    workspaceId: row.organizationId,
+    room: row.room,
+    visitorName: row.visitorName,
+    state: row.state as SessionState,
+    endReason: row.endReason ?? undefined,
+    startedAt: row.startedAt.toISOString(),
+    endedAt: row.endedAt?.toISOString(),
+    lastEventAt: row.lastEventAt?.toISOString(),
+    summary: row.summary ?? undefined,
+    messageCount: row.messageCount,
+  };
+}
+
+function toResearchJob(row: ResearchRow): ResearchJob {
+  return {
+    id: row.id,
+    agentId: row.presenterId,
+    workspaceId: row.organizationId,
+    notes: row.notes,
+    docsUrls: row.docsUrls,
+    state: row.state as ResearchState,
+    phase: (row.phase ?? undefined) as ResearchPhase | undefined,
+    error: row.error ?? undefined,
+    warnings: row.warnings,
+    events: row.events,
+    draft: (row.draft ?? undefined) as ResearchDraft | undefined,
+    revisions: row.revisions,
+    startedAt: row.startedAt.toISOString(),
+    finishedAt: row.finishedAt?.toISOString(),
+    appliedAt: row.appliedAt?.toISOString(),
+  };
+}
+
+/** The columns `applyResearchEvent` may change. */
+function researchPatch(job: ResearchJob): Partial<typeof researchJob.$inferInsert> {
+  return {
+    state: job.state,
+    phase: job.phase ?? null,
+    error: job.error ?? null,
+    warnings: job.warnings,
+    events: job.events,
+    draft: (job.draft ?? null) as Record<string, unknown> | null,
+    finishedAt: job.finishedAt ? new Date(job.finishedAt) : null,
+  };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID.test(value);
 }
 
 let store: Store | undefined;
 
 export function getStore(): Store {
-  if (!store) {
-    const dir = process.env.DATA_DIR ?? path.join(process.cwd(), '.data');
-    store = new JsonFileStore(path.join(dir, 'store.json'));
-  }
+  store ??= new Store(getDb());
   return store;
 }

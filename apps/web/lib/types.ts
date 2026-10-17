@@ -8,6 +8,8 @@ export interface Secret {
 /** A presenter configured by the owner: a goal, a starting point and a persona. */
 export interface DemoAgent {
   id: string;
+  /** The workspace (Better Auth organization) that owns this presenter. */
+  workspaceId: string;
   slug: string;
   name: string;
   mode: DemoMode;
@@ -43,12 +45,21 @@ export interface SessionEvent {
 export interface DemoSession {
   id: string;
   agentId: string;
+  workspaceId: string;
   room: string;
   visitorName: string;
   state: SessionState;
+  /** Set when the session ended abnormally, e.g. "dispatch failed". */
+  endReason?: string;
   startedAt: string;
   endedAt?: string;
+  lastEventAt?: string;
   summary?: string;
+  /** Lines of conversation (presenter + visitor) so far. */
+  messageCount: number;
+}
+
+export interface DemoSessionDetail extends DemoSession {
   events: SessionEvent[];
 }
 
@@ -69,6 +80,16 @@ export interface ConnectionDetails {
   participantName: string;
   sessionId: string;
 }
+
+export type WorkspaceRole = 'owner' | 'admin' | 'member';
+
+/** The signed-in user and the workspace they are working in. */
+export type Viewer = {
+  user: { id: string; name: string; email: string; image?: string | null };
+  workspace: { id: string; name: string; slug: string };
+  role: WorkspaceRole;
+  workspaces: { id: string; name: string; role: WorkspaceRole }[];
+};
 
 // ── AI research: the presenter learns the product and drafts its own demo ──
 
@@ -117,6 +138,7 @@ export interface ResearchInput {
 export interface ResearchJob extends ResearchInput {
   id: string;
   agentId: string;
+  workspaceId: string;
   state: ResearchState;
   phase?: ResearchPhase;
   startedAt: string;

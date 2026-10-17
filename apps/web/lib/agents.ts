@@ -3,7 +3,7 @@ import { object, str, url, ValidationError } from './validation';
 
 export { ValidationError };
 
-export type AgentInput = Omit<DemoAgent, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
+export type AgentInput = Omit<DemoAgent, 'id' | 'workspaceId' | 'slug' | 'createdAt' | 'updatedAt'>;
 
 const MODES: DemoMode[] = ['product_demo', 'presentation'];
 
@@ -62,6 +62,7 @@ export function parseAgentInput(body: unknown, previous?: DemoAgent): AgentInput
 export function agentInputOf(agent: DemoAgent): AgentInput {
   const input: Partial<DemoAgent> = { ...agent };
   delete input.id;
+  delete input.workspaceId;
   delete input.slug;
   delete input.createdAt;
   delete input.updatedAt;

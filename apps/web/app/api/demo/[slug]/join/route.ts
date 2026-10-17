@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { isJoinable, toBrief } from '@/lib/agents';
 import { dispatchPresenter, livekitServerUrl, participantToken } from '@/lib/server/livekit';
+import { clientIp, hashIp, JOIN_LIMITS } from '@/lib/server/rate-limit';
 import { getStore } from '@/lib/server/store';
 import type { ConnectionDetails } from '@/lib/types';
 
@@ -22,8 +23,28 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Please tell us your name.' }, { status: 400 });
   }
 
+  // Every join starts a paid AI session, so cap how fast anyone can start them.
+  const ip = clientIp(request.headers);
+  const ipHash = ip ? hashIp(ip) : null;
+  const windowStart = new Date(Date.now() - JOIN_LIMITS.windowMinutes * 60_000);
+  if (ipHash && (await store.countJoinsFromIp(ipHash, windowStart)) >= JOIN_LIMITS.perIp) {
+    return NextResponse.json(
+      { error: 'Too many sessions started from your network. Please try again in a few minutes.' },
+      { status: 429 },
+    );
+  }
+  const busySince = new Date(Date.now() - (agent.maxMinutes + 10) * 60_000);
+  if (
+    (await store.countActiveSessions(agent.id, busySince)) >= JOIN_LIMITS.concurrentPerPresenter
+  ) {
+    return NextResponse.json(
+      { error: 'This presenter is busy with other visitors right now. Please try again shortly.' },
+      { status: 503 },
+    );
+  }
+
   const room = `demo-${agent.slug}-${randomBytes(4).toString('hex')}`;
-  const session = await store.createSession(agent.id, room, visitorName);
+  const session = await store.createSession(agent, room, visitorName, ipHash);
   const callbackBase = process.env.AGENT_CALLBACK_BASE_URL ?? request.nextUrl.origin;
 
   try {

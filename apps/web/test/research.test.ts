@@ -22,6 +22,7 @@ const agent: DemoAgent = {
     secrets: [{ name: 'password', value: 'hunter2' }],
   }),
   id: 'a1',
+  workspaceId: 'w1',
   slug: 'acme-tour',
   createdAt: '',
   updatedAt: '',
@@ -31,6 +32,7 @@ function job(patch: Partial<ResearchJob> = {}): ResearchJob {
   return {
     id: 'j1',
     agentId: 'a1',
+    workspaceId: 'w1',
     notes: '',
     docsUrls: [],
     state: 'queued',

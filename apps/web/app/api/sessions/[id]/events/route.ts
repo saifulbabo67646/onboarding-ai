@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { isAgentRequest } from '@/lib/server/auth';
+import { isAgentRequest } from '@/lib/server/agent-auth';
 import { getStore } from '@/lib/server/store';
 import type { SessionEvent } from '@/lib/types';
 
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .filter((e): e is SessionEvent => typeof e?.type === 'string' && typeof e?.data === 'object')
     .slice(0, 100)
     .map((e) => ({ type: e.type, data: e.data ?? {}, ts: Number(e.ts) || Date.now() / 1000 }));
-  const session = await getStore().appendSessionEvents(id, events);
-  if (!session) return NextResponse.json({ error: 'Unknown session' }, { status: 404 });
+  const found = await getStore().appendSessionEvents(id, events);
+  if (!found) return NextResponse.json({ error: 'Unknown session' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

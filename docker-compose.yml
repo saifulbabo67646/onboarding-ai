@@ -5,7 +5,7 @@
 #   docker compose build    # also builds the sandbox image
 #   docker compose up
 #
-# Then open http://localhost:3000/dashboard.
+# Then open http://localhost:3000/signup to create the first account.
 
 name: onboarding-ai
 
@@ -17,11 +17,28 @@ services:
     env_file: .env
     environment:
       AGENT_CALLBACK_BASE_URL: http://web:3000
+      DATABASE_URL: postgres://onboard:onboard@postgres:5432/onboard
       RESEARCHER_URL: http://researcher:8790
     ports:
       - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: onboard
+      POSTGRES_PASSWORD: onboard
+      POSTGRES_DB: onboard
     volumes:
-      - web-data:/data
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onboard -d onboard"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   agent:
@@ -69,4 +86,4 @@ networks:
     name: onboarding-ai
 
 volumes:
-  web-data:
+  postgres-data:

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { isAgentRequest } from '@/lib/server/auth';
+import { isAgentRequest } from '@/lib/server/agent-auth';
 import { getStore } from '@/lib/server/store';
 import type { SessionEvent } from '@/lib/types';
 

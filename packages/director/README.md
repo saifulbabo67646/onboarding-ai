@@ -43,7 +43,7 @@ summary = await director.run()
 - Long sessions stay lean with server-side context editing; refusals are handled with the
   server-side fallback chain and a graceful exit.
 
-Config (`DirectorConfig`): `model` (default `claude-opus-5`), `effort` (default `medium` for
+Config (`DirectorConfig`): `model` (default `claude-opus-5-5`), `effort` (default `medium` for
 live latency), `fallbacks`, screenshot quality, context-editing thresholds.
 
 ## Terminal dry run

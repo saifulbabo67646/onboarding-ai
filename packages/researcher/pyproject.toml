@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "onboard-researcher"
+version = "0.1.0"
+description = "Researches a web product (docs + hands-on exploration) and writes the demo playbook an AI presenter follows"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+  "anthropic>=1.8",
+  "aiohttp>=3.9",
+  "onboard-director",
+  "onboard-sandbox",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+onboard-researcher = "onboard_researcher.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/onboard_researcher"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

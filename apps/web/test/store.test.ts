@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'fs';
+import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
@@ -47,11 +47,46 @@ describe('JsonFileStore', () => {
     expect(await store.appendSessionEvents('nope', [])).toBeUndefined();
   });
 
-  it('deletes an agent with its sessions', async () => {
+  it('deletes an agent with its sessions and research', async () => {
     const store = newStore();
     const agent = await store.createAgent(input);
     await store.createSession(agent.id, 'r', 'v');
+    await store.createResearchJob(agent.id, { notes: '', docsUrls: [] });
     expect(await store.deleteAgent(agent.id)).toBe(true);
     expect(await store.listSessions(agent.id)).toHaveLength(0);
+    expect(await store.latestResearchJob(agent.id)).toBeUndefined();
+  });
+
+  it('stores research jobs and folds researcher events into them', async () => {
+    const store = newStore();
+    const agent = await store.createAgent(input);
+    const first = await store.createResearchJob(agent.id, { notes: 'CFOs', docsUrls: [] });
+    await new Promise((r) => setTimeout(r, 5));
+    const job = await store.createResearchJob(agent.id, { notes: 'again', docsUrls: [] });
+    expect((await store.latestResearchJob(agent.id))?.id).toBe(job.id);
+    await store.appendResearchEvents(job.id, [
+      { type: 'draft', data: { goal: 'Show reports', knowledge: 'k', playbook: {} }, ts: 1 },
+      { type: 'status', data: { state: 'drafted' }, ts: 2 },
+    ]);
+    const done = await store.getResearchJob(job.id);
+    expect(done).toMatchObject({ state: 'drafted', draft: { goal: 'Show reports' } });
+    await store.updateResearchJob(job.id, { revisions: 1 });
+    expect((await store.getResearchJob(job.id))?.revisions).toBe(1);
+    expect((await store.getResearchJob(first.id))?.state).toBe('queued');
+    expect(await store.appendResearchEvents('nope', [])).toBeUndefined();
+  });
+
+  it('upgrades store files written before research existed', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'onboard-'));
+    const file = path.join(dir, 'store.json');
+    const legacyAgent = { ...input, id: 'x', slug: 'x', createdAt: '', updatedAt: '' } as Record<
+      string,
+      unknown
+    >;
+    delete legacyAgent.knowledge;
+    writeFileSync(file, JSON.stringify({ agents: [legacyAgent], sessions: [] }));
+    const store = new JsonFileStore(file);
+    expect((await store.getAgent('x'))?.knowledge).toBe('');
+    expect(await store.latestResearchJob('x')).toBeUndefined();
   });
 });

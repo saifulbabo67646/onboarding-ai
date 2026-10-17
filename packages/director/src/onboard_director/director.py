@@ -10,10 +10,7 @@ time.
 from __future__ import annotations
 
 import asyncio
-import base64
-import io
 import logging
-import math
 import re
 import time
 from dataclasses import dataclass
@@ -22,13 +19,21 @@ from typing import Any, Callable
 import anthropic
 from anthropic import AsyncAnthropic
 from onboard_sandbox import SandboxInterrupted
-from PIL import Image
 
 from . import whiteboard
 from .brief import DemoBrief, google_slides_id
 from .interfaces import Computer, Narrator, Speech
 from .prompts import opening_message, system_prompt
-from .tools import COMPUTER_TOOLSET, computer_action, presenter_tools
+from .backend import hoist_images, open_stream, prune_images
+from .screen import ScreenView
+from .tools import (
+    COMPUTER_TOOLSET,
+    as_computer_call,
+    computer_action,
+    open_url_actions,
+    portable_computer_tool,
+    presenter_tools,
+)
 
 logger = logging.getLogger("onboard.director")
 
@@ -48,7 +53,7 @@ def is_backchannel(text: str) -> bool:
 
 @dataclass
 class DirectorConfig:
-    model: str = "claude-opus-5"
+    model: str = "claude-opus-5-5"
     effort: str = "medium"  # latency matters in a live call; raise for harder demos
     max_tokens: int = 16000
     fallbacks: bool = True
@@ -58,6 +63,15 @@ class DirectorConfig:
     # Server-side context editing keeps long sessions lean.
     context_trigger_tokens: int = 90_000
     context_keep_tool_uses: int = 24
+    # Claude on Anthropic's API (full feature set) or a portable Anthropic-compatible
+    # backend (see onboard_director.backend). None = decide from the model name.
+    native: bool | None = None
+    # Portable backends: how many recent screenshots stay in context.
+    keep_screenshots: int = 3
+
+    @property
+    def is_native(self) -> bool:
+        return self.native if self.native is not None else self.model.startswith("claude")
 
 
 class Director:
@@ -86,8 +100,7 @@ class Director:
         self._audience_speaking = False
         self._speeches: list[Speech] = []
         self._done = False
-        self._scale = 1.0
-        self._screen = (1280, 800)
+        self.screen = ScreenView(computer, quality=self.config.screenshot_quality)
         self._started = 0.0
         self._wrap_up_sent = False
         self._system = ""
@@ -120,15 +133,17 @@ class Director:
     # -- lifecycle --------------------------------------------------------------------
 
     async def prepare(self) -> None:
-        health = await self.computer.health()
-        w, h = health.get("size", self._screen)
-        self._screen = (int(w), int(h))
-        # Keep screenshots inside the model's comfortable image budget.
-        self._scale = min(1.0, 1568 / max(w, h), math.sqrt(1_150_000 / (w * h)))
+        await self.screen.calibrate()
         deck_outline = await self._deck_outline() if self.brief.mode == "presentation" else None
         self._system = system_prompt(self.brief, deck_outline=deck_outline)
+        w, h = self.screen.size
+        computer = (
+            COMPUTER_TOOLSET
+            if self.config.is_native
+            else portable_computer_tool(round(w * self.screen.scale), round(h * self.screen.scale))
+        )
         self._tools = [
-            COMPUTER_TOOLSET,
+            computer,
             *presenter_tools(whiteboard=self.brief.allow_whiteboard, secrets=bool(self.brief.secrets)),
         ]
         await self._safe(self.computer.presence(idle=True))
@@ -141,7 +156,7 @@ class Director:
         self.messages = [
             {
                 "role": "user",
-                "content": [{"type": "text", "text": opening_message(self.brief)}, *await self._screenshot_blocks()],
+                "content": [{"type": "text", "text": opening_message(self.brief)}, *await self.screen.blocks()],
             }
         ]
         self.on_event("status", {"state": "presenting"})
@@ -235,7 +250,9 @@ class Director:
         results: dict[str, dict[str, Any]] = {}
         worker = asyncio.create_task(self._run_tools(queue, results))
         try:
-            async with self.client.beta.messages.stream(**self._request_params()) as stream:
+            if not self.config.is_native:
+                prune_images(self.messages, self.config.keep_screenshots)
+            async with open_stream(self.client, self._request_params(), native=self.config.is_native) as stream:
                 async for event in stream:
                     if event.type == "content_block_stop" and getattr(event.content_block, "type", None) == "tool_use":
                         queue.put_nowait(event.content_block)
@@ -255,7 +272,9 @@ class Director:
             await asyncio.sleep(self.config.settle_seconds)
             last = self._pending_results[-1]
             existing = last["content"] if isinstance(last["content"], list) else [{"type": "text", "text": str(last["content"])}]
-            last["content"] = [*existing, {"type": "text", "text": "Screen after your actions:"}, *await self._screenshot_blocks()]
+            last["content"] = [*existing, {"type": "text", "text": "Screen after your actions:"}, *await self.screen.blocks()]
+        if not self.config.is_native:
+            self._pending_results = hoist_images(self._pending_results)
         return message
 
     async def _run_tools(self, queue: asyncio.Queue, results: dict[str, dict[str, Any]]) -> bool:
@@ -281,14 +300,16 @@ class Director:
 
     @staticmethod
     def _is_screenshot(block) -> bool:
-        return getattr(block, "toolset_name", None) == "computer" and block.name in ("screenshot", "zoom")
+        call = as_computer_call(block)
+        return call is not None and call[0] in ("screenshot", "zoom")
 
     async def _execute(self, block) -> tuple[Any, bool]:
         args = block.input if isinstance(block.input, dict) else {}
         name = block.name
         self.on_event("action", {"tool": name, "input": args})
-        if getattr(block, "toolset_name", None) == "computer":
-            return await self._computer(name, args)
+        call = as_computer_call(block)
+        if call:
+            return await self._computer(*call)
         handler = getattr(self, f"_tool_{name}", None)
         if handler is None:
             raise ValueError(f"Unknown tool {name}")
@@ -298,13 +319,12 @@ class Director:
 
     async def _computer(self, name: str, args: dict[str, Any]) -> tuple[Any, bool]:
         if name == "screenshot":
-            return await self._screenshot_blocks(), False
+            return await self.screen.blocks(), False
         if name == "zoom":
-            return await self._zoom(args["region"]), False
+            return await self.screen.zoom(args["region"]), False
         if name == "cursor_position":
-            x, y = (await self.computer.health())["cursor"]
-            return f"X={round(x * self._scale)}, Y={round(y * self._scale)}", False
-        action = computer_action(name, args, self._scale)
+            return await self.screen.cursor_text(), False
+        action = computer_action(name, args, self.screen.scale)
         if action:
             await self.computer.act(action)
         return "OK", name not in ("wait", "mouse_move")
@@ -319,7 +339,7 @@ class Director:
         return "Speaking.", False
 
     async def _tool_point_at(self, args: dict[str, Any]) -> tuple[Any, bool]:
-        x, y, w, h = [float(v) / self._scale for v in _require(args, "box")]
+        x, y, w, h = [self.screen.to_screen(v) for v in _require(args, "box")]
         speech = self._speak(args["text"]) if args.get("text") else None
         await self.computer.act({"type": "gesture", "kind": args.get("gesture", "hover"), "box": [x, y, w, h]})
         if speech and not await speech.wait():
@@ -328,15 +348,7 @@ class Director:
 
     async def _tool_open_url(self, args: dict[str, Any]) -> tuple[Any, bool]:
         url = _require(args, "url")
-        focus = "ctrl+t" if args.get("new_tab", True) else "ctrl+l"
-        await self.computer.act(
-            {"type": "key", "keys": focus},
-            {"type": "wait", "seconds": 0.35},
-            {"type": "type", "text": url},
-            {"type": "wait", "seconds": 0.2},
-            {"type": "key", "keys": "Return"},
-            {"type": "wait", "seconds": 1.5},
-        )
+        await self.computer.act(*open_url_actions(url, new_tab=args.get("new_tab", True)))
         return f"Opened {url}.", True
 
     async def _tool_type_secret(self, args: dict[str, Any]) -> tuple[Any, bool]:
@@ -355,7 +367,7 @@ class Director:
 
     async def _tool_sketch(self, args: dict[str, Any]) -> tuple[Any, bool]:
         shapes = _require(args, "shapes")
-        scaled = [_scale_shape(s, self._scale) for s in shapes]
+        scaled = [_scale_shape(s, self.screen.scale) for s in shapes]
         await self.computer.act(*whiteboard.sketch_actions(scaled))
         return f"Drew {len(shapes)} shape(s).", True
 
@@ -425,24 +437,6 @@ class Director:
         if elapsed_min >= self.brief.max_minutes + 5:
             self._done = True
 
-    async def _screenshot_image(self) -> Image.Image:
-        data = await self.computer.screenshot(fmt="jpeg", quality=self.config.screenshot_quality)
-        img = Image.open(io.BytesIO(data))
-        if self._scale < 1.0:
-            img = img.resize((round(img.width * self._scale), round(img.height * self._scale)), Image.LANCZOS)
-        return img
-
-    async def _screenshot_blocks(self) -> list[dict[str, Any]]:
-        return [_image_block(await self._screenshot_image(), self.config.screenshot_quality)]
-
-    async def _zoom(self, region: list[float]) -> list[dict[str, Any]]:
-        img = await self._screenshot_image()
-        x0, y0, x1, y1 = [int(v) for v in region]
-        crop = img.crop((max(0, x0), max(0, y0), min(img.width, x1), min(img.height, y1)))
-        ratio = min(img.width / max(1, crop.width), img.height / max(1, crop.height))
-        crop = crop.resize((max(1, round(crop.width * ratio)), max(1, round(crop.height * ratio))), Image.LANCZOS)
-        return [_image_block(crop, 90)]
-
     async def _deck_outline(self) -> str | None:
         slides_id = google_slides_id(self.brief.start_url)
         if not slides_id:
@@ -472,15 +466,6 @@ def _require(args: dict[str, Any], key: str) -> Any:
     if key not in args or args[key] in (None, ""):
         raise ValueError(f"Missing required argument '{key}'")
     return args[key]
-
-
-def _image_block(img: Image.Image, quality: int) -> dict[str, Any]:
-    out = io.BytesIO()
-    img.convert("RGB").save(out, "JPEG", quality=quality)
-    return {
-        "type": "image",
-        "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(out.getvalue()).decode()},
-    }
 
 
 def _scale_shape(shape: dict[str, Any], scale: float) -> dict[str, Any]:

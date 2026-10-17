@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { AgentForm } from '@/components/AgentForm';
+import { NewPresenter } from '@/components/NewPresenter';
 import { TopBar } from '@/components/TopBar';
 
 export const metadata: Metadata = { title: 'New presenter' };
@@ -13,11 +13,11 @@ export default function NewAgentPage() {
           <div>
             <h1>New presenter</h1>
             <p className="muted" style={{ margin: '8px 0 0' }}>
-              Give it a goal and a starting point. It takes care of the rest, live.
+              Point it at your app and let it learn the product, or write the goal yourself.
             </p>
           </div>
         </div>
-        <AgentForm />
+        <NewPresenter />
       </main>
     </>
   );

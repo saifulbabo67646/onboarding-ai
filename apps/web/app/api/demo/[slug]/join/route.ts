@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { NextResponse, type NextRequest } from 'next/server';
-import { toBrief } from '@/lib/agents';
+import { isJoinable, toBrief } from '@/lib/agents';
 import { dispatchPresenter, livekitServerUrl, participantToken } from '@/lib/server/livekit';
 import { getStore } from '@/lib/server/store';
 import type { ConnectionDetails } from '@/lib/types';
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { slug } = await params;
   const store = getStore();
   const agent = await store.getAgentBySlug(slug);
-  if (!agent || !agent.published) {
+  if (!agent || !isJoinable(agent)) {
     return NextResponse.json({ error: 'This demo is not available.' }, { status: 404 });
   }
 

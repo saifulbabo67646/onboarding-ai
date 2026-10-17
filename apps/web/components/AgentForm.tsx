@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { DemoAgent, DemoMode, Secret } from '@/lib/types';
+import type { DemoAgent, DemoMode } from '@/lib/types';
+import { SecretsEditor } from './SecretsEditor';
 
 type FormState = Omit<DemoAgent, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
 
@@ -10,6 +11,7 @@ const EMPTY: FormState = {
   name: '',
   mode: 'product_demo',
   goal: '',
+  knowledge: '',
   startUrl: '',
   description: '',
   presenterName: 'Alex',
@@ -39,12 +41,6 @@ export function AgentForm({ initial }: { initial?: DemoAgent }) {
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
-
-  const setSecret = (i: number, patch: Partial<Secret>) =>
-    set(
-      'secrets',
-      form.secrets.map((s, j) => (i === j ? { ...s, ...patch } : s)),
-    );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -133,11 +129,24 @@ export function AgentForm({ initial }: { initial?: DemoAgent }) {
             value={form.goal}
             onChange={(e) => set('goal', e.target.value)}
             placeholder={GOAL_PLACEHOLDER[form.mode]}
-            required
+            required={form.published}
           />
           <span className="hint">
             Plain language. Say what the audience should see and understand, what to emphasise, and
             anything to avoid. The presenter figures out the clicks.
+          </span>
+        </div>
+        <div className="field">
+          <label htmlFor="knowledge">Preparation notes (optional)</label>
+          <textarea
+            id="knowledge"
+            className="textarea"
+            value={form.knowledge}
+            onChange={(e) => set('knowledge', e.target.value)}
+            placeholder="Product facts, where features live, answers to common questions. AI research fills this in for you."
+          />
+          <span className="hint">
+            Background the presenter studies before every call. It is never read out verbatim.
           </span>
         </div>
         <label className="checkbox">
@@ -251,46 +260,11 @@ export function AgentForm({ initial }: { initial?: DemoAgent }) {
             or logs the values.
           </p>
         </div>
-        {form.secrets.map((s, i) => (
-          <div className="row" key={i}>
-            <input
-              className="input"
-              placeholder="name (e.g. password)"
-              value={s.name}
-              onChange={(e) => setSecret(i, { name: e.target.value })}
-            />
-            <input
-              className="input"
-              type="password"
-              placeholder={
-                savedSecretNames.has(s.name) ? '•••••• saved - leave empty to keep' : 'value'
-              }
-              value={s.value}
-              onChange={(e) => setSecret(i, { value: e.target.value })}
-            />
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() =>
-                set(
-                  'secrets',
-                  form.secrets.filter((_, j) => j !== i),
-                )
-              }
-            >
-              Remove
-            </button>
-          </div>
-        ))}
-        <div>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => set('secrets', [...form.secrets, { name: '', value: '' }])}
-          >
-            Add secret
-          </button>
-        </div>
+        <SecretsEditor
+          secrets={form.secrets}
+          onChange={(secrets) => set('secrets', secrets)}
+          savedNames={savedSecretNames}
+        />
       </div>
 
       {error && <p className="error-text">{error}</p>}

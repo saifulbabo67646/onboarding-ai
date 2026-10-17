@@ -3,7 +3,15 @@ import { randomBytes, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { slugify, type AgentInput } from '../agents';
-import type { DemoAgent, DemoSession, SessionEvent, SessionState } from '../types';
+import { applyResearchEvent } from '../research';
+import type {
+  DemoAgent,
+  DemoSession,
+  ResearchInput,
+  ResearchJob,
+  SessionEvent,
+  SessionState,
+} from '../types';
 
 /**
  * Persistence for agents and sessions. The default implementation is a JSON
@@ -21,15 +29,34 @@ export interface Store {
   getSession(id: string): Promise<DemoSession | undefined>;
   listSessions(agentId?: string, limit?: number): Promise<DemoSession[]>;
   appendSessionEvents(id: string, events: SessionEvent[]): Promise<DemoSession | undefined>;
+  createResearchJob(agentId: string, input: ResearchInput): Promise<ResearchJob>;
+  getResearchJob(id: string): Promise<ResearchJob | undefined>;
+  latestResearchJob(agentId: string): Promise<ResearchJob | undefined>;
+  appendResearchEvents(id: string, events: SessionEvent[]): Promise<ResearchJob | undefined>;
+  updateResearchJob(
+    id: string,
+    patch: Partial<Omit<ResearchJob, 'id' | 'agentId'>>,
+  ): Promise<ResearchJob | undefined>;
 }
 
 interface Data {
   agents: DemoAgent[];
   sessions: DemoSession[];
+  research: ResearchJob[];
 }
 
 const MAX_EVENTS_PER_SESSION = 2000;
 const MAX_SESSIONS = 1000;
+const MAX_RESEARCH_JOBS_PER_AGENT = 10;
+
+/** Fill in fields added after a store file was first written. */
+function migrate(raw: Partial<Data>): Data {
+  return {
+    agents: (raw.agents ?? []).map((a) => ({ ...a, knowledge: a.knowledge ?? '' })),
+    sessions: raw.sessions ?? [],
+    research: raw.research ?? [],
+  };
+}
 
 export class JsonFileStore implements Store {
   private cache: Data | null = null;
@@ -40,10 +67,10 @@ export class JsonFileStore implements Store {
   private async load(): Promise<Data> {
     if (this.cache) return this.cache;
     try {
-      this.cache = JSON.parse(await fs.readFile(this.file, 'utf8')) as Data;
+      this.cache = migrate(JSON.parse(await fs.readFile(this.file, 'utf8')) as Partial<Data>);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-      this.cache = { agents: [], sessions: [] };
+      this.cache = migrate({});
     }
     return this.cache;
   }
@@ -103,6 +130,7 @@ export class JsonFileStore implements Store {
       const before = data.agents.length;
       data.agents = data.agents.filter((a) => a.id !== id);
       data.sessions = data.sessions.filter((s) => s.agentId !== id);
+      data.research = data.research.filter((j) => j.agentId !== id);
       return data.agents.length < before;
     });
   }
@@ -149,6 +177,56 @@ export class JsonFileStore implements Store {
         session.events.splice(0, session.events.length - MAX_EVENTS_PER_SESSION);
       }
       return session;
+    });
+  }
+
+  createResearchJob(agentId: string, input: ResearchInput) {
+    return this.mutate((data) => {
+      const job: ResearchJob = {
+        id: randomUUID(),
+        agentId,
+        ...input,
+        state: 'queued',
+        startedAt: new Date().toISOString(),
+        warnings: [],
+        events: [],
+        revisions: 0,
+      };
+      data.research.push(job);
+      const mine = data.research.filter((j) => j.agentId === agentId);
+      if (mine.length > MAX_RESEARCH_JOBS_PER_AGENT) {
+        const drop = new Set(mine.slice(0, mine.length - MAX_RESEARCH_JOBS_PER_AGENT));
+        data.research = data.research.filter((j) => !drop.has(j));
+      }
+      return job;
+    });
+  }
+
+  async getResearchJob(id: string) {
+    return (await this.load()).research.find((j) => j.id === id);
+  }
+
+  async latestResearchJob(agentId: string) {
+    return (await this.load()).research
+      .filter((j) => j.agentId === agentId)
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+  }
+
+  appendResearchEvents(id: string, events: SessionEvent[]) {
+    return this.mutate((data) => {
+      const job = data.research.find((j) => j.id === id);
+      if (!job) return undefined;
+      for (const event of events) applyResearchEvent(job, event);
+      return job;
+    });
+  }
+
+  updateResearchJob(id: string, patch: Partial<Omit<ResearchJob, 'id' | 'agentId'>>) {
+    return this.mutate((data) => {
+      const job = data.research.find((j) => j.id === id);
+      if (!job) return undefined;
+      Object.assign(job, patch);
+      return job;
     });
   }
 }

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { AgentForm } from '@/components/AgentForm';
 import { CopyLink } from '@/components/CopyLink';
+import { ResearchPanel } from '@/components/ResearchPanel';
 import { SessionList } from '@/components/SessionList';
 import { TopBar } from '@/components/TopBar';
 import { toOwnerView } from '@/lib/agents';
@@ -17,6 +18,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   const agent = await store.getAgent(id);
   if (!agent) notFound();
   const sessions = await store.listSessions(id, 25);
+  const research = (await store.latestResearchJob(id)) ?? null;
   const shareUrl = `${await publicOrigin()}/d/${agent.slug}`;
 
   return (
@@ -32,15 +34,24 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
         <div className="stack">
+          {agent.mode === 'product_demo' && (
+            <ResearchPanel agentId={agent.id} initialJob={research} />
+          )}
           <div className="card stack">
             <h3>Share link</h3>
             <CopyLink url={shareUrl} />
+            {!agent.published && (
+              <span className="faint" style={{ fontSize: 13 }}>
+                Paused - visitors can&apos;t join until you publish.
+              </span>
+            )}
           </div>
           <div className="card">
             <h3 style={{ marginBottom: 8 }}>Recent sessions</h3>
             <SessionList sessions={sessions} />
           </div>
-          <AgentForm initial={toOwnerView(agent)} />
+          {/* Remount when the draft is applied so the form shows the new goal. */}
+          <AgentForm key={agent.updatedAt} initial={toOwnerView(agent)} />
         </div>
       </main>
     </>

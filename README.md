@@ -8,11 +8,17 @@ presenter joins a video call, **shares its screen** and walks them through it - 
 naturally, moving a real mouse, typing with a human rhythm, opening tabs, pointing at what it is
 explaining, and pausing to answer questions whenever it is interrupted.
 
-No scripts, no click-paths, no knowledge base. The presenter looks at the screen and works it out,
-the way a colleague would.
+No scripts, no click-paths. You don't even have to write the goal: give it your app's link and a
+demo login, and it **learns the product on its own** - reads your docs, signs in, explores the app -
+and drafts the demo for you to approve once.
 
 ## What it can do
 
+- **Learns your product by itself** - paste a URL (plus demo credentials). The researcher reads
+  your public docs with web search, explores the live app hands-on in a private sandbox, and
+  writes a demo playbook: the goal, a section-by-section flow with verified menu paths, talking
+  points, login steps, likely questions and things to avoid. Review it once, ask for changes in
+  plain language ("make it 10 minutes, skip billing"), approve - every visitor gets that demo.
 - **Product demos** - start from any web app URL, log in with stored secrets (typed, never
   revealed), and show the workflows the goal describes.
 - **Slide presentations** - paste a public Google Slides link (or a `.pptx` / `.pdf` URL) and it
@@ -41,7 +47,9 @@ the way a colleague would.
                                          └───────────────────────────────────────────────┘
 ```
 
-1. The owner creates a presenter in the **dashboard** and shares its link.
+1. The owner creates a presenter in the **dashboard** - either by writing a goal, or by giving a
+   URL and demo login and letting the **researcher** draft the goal and preparation notes - and
+   shares its link once the draft is approved.
 2. A visitor opens the link and joins. The web app creates a private LiveKit room and dispatches
    the **worker** with the presenter's brief.
 3. The worker provisions a **sandbox** - an isolated virtual desktop with a real, headful
@@ -62,6 +70,7 @@ Every piece is a standalone package with its own README, tests and license, so e
 | [`packages/humanize`](packages/humanize) | `onboard-humanize` | Pure-Python models of human pointing, gestures, typing and scrolling. Zero dependencies. |
 | [`packages/sandbox`](packages/sandbox) | `onboard-sandbox` | Virtual desktop server (Xvfb + Chromium) with human-like XTEST input, screenshots and a live JPEG stream; async client; local/Docker/static provisioning. |
 | [`packages/director`](packages/director) | `onboard-director` | The presenting loop: Claude computer use + narration, pointing, whiteboard sketching, secrets, listening and interruptions. Platform-agnostic. |
+| [`packages/researcher`](packages/researcher) | `onboard-researcher` | Learns a product from a URL (docs research + hands-on exploration) and writes the demo playbook the director presents from. Library, CLI and HTTP service. |
 | [`apps/agent`](apps/agent) | `onboard-agent` | LiveKit worker that glues it together: voice in/out, screen share, per-session sandbox. |
 | [`apps/web`](apps/web) | `onboard-web` | Next.js dashboard, public demo pages and the meeting room. |
 
@@ -77,16 +86,27 @@ cp .env apps/web/.env.local
 
 # Python side
 python -m venv .venv && source .venv/bin/activate
-pip install -e packages/humanize -e "packages/sandbox[server]" -e packages/director -e apps/agent
+pip install -e packages/humanize -e "packages/sandbox[server]" -e packages/director \
+            -e packages/researcher -e apps/agent
 onboard-agent download-files    # VAD model
 onboard-agent dev               # run the worker (reads .env)
+onboard-researcher serve        # (another terminal) drafts demos from a URL
 
 # Web side (another terminal)
 cd apps/web && pnpm install && pnpm dev
 ```
 
-Open <http://localhost:3000/dashboard>, create a presenter, then open its share link in another
-browser window and join.
+Open <http://localhost:3000/dashboard>, create a presenter ("Let AI prepare it" takes a URL and a
+demo login), review and approve the draft, then open its share link in another browser window and
+join.
+
+### Draft a demo from the command line
+
+```bash
+onboard-researcher run --url https://app.example.com/login \
+    --secret username=demo@example.com --secret password=... \
+    --notes "Visitors are finance managers; focus on reporting"
+```
 
 ### Try the presenter without a meeting
 
@@ -119,12 +139,38 @@ dispatches across workers.
 | --- | --- | --- |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | web, agent | Meetings |
 | `ANTHROPIC_API_KEY` | agent | The director |
-| `DIRECTOR_MODEL` / `DIRECTOR_EFFORT` | agent | Model (default `claude-opus-5`) and effort (default `medium`, a latency trade-off for live calls) |
+| `DIRECTOR_MODEL` / `DIRECTOR_EFFORT` | agent | Model (default `claude-opus-5-5`) and effort (default `medium`, a latency trade-off for live calls) |
+| `DIRECTOR_BASE_URL`, `DIRECTOR_API_KEY`, `DIRECTOR_NATIVE` | agent | Run the presenter on another Anthropic-compatible provider (see below) |
 | `DEEPGRAM_API_KEY`, `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` | agent | Speech-to-text and voice |
 | `DASHBOARD_PASSWORD` | web | Owner login (dashboard is open when unset) |
-| `AGENT_CALLBACK_SECRET` | web, agent | Authenticates transcript/status reports |
-| `SANDBOX_PROVIDER` | agent | `local`, `docker` or `static` |
-| `SANDBOX_SIZE` | agent, sandbox | Desktop resolution (default `1280x800`) |
+| `AGENT_CALLBACK_SECRET` | web, agent, researcher | Authenticates transcript/status/research reports |
+| `RESEARCHER_URL`, `RESEARCHER_TOKEN` | web, researcher | Where the dashboard reaches the research service, and its shared token |
+| `RESEARCHER_MODEL` / `RESEARCHER_EFFORT` | researcher | Model (default `claude-opus-5-5`) and effort (default `high`) for research |
+| `SANDBOX_PROVIDER` | agent, researcher | `local`, `docker` or `static` |
+| `SANDBOX_SIZE` | agent, researcher, sandbox | Desktop resolution (default `1280x800`) |
+
+## Other models
+
+Claude on Anthropic's API is the default and gets the full feature set (native computer use,
+adaptive thinking, context editing, server-side web search). Any provider that serves the
+Anthropic Messages format can be used instead - set `DIRECTOR_MODEL` + `DIRECTOR_BASE_URL` +
+`DIRECTOR_API_KEY` (and the `RESEARCHER_*` equivalents). Non-Claude models get a **portable mode**:
+
+- a regular `computer` tool with the same actions and parameters as Claude's computer toolset,
+  executed by the same sandbox code;
+- screenshots sent as top-level content (many compatible endpoints ignore images inside tool
+  results) and pruned client-side to the last few;
+- JSON requested in the prompt instead of structured outputs, and docs read through a
+  client-side `fetch_page` tool (public addresses only) instead of server-side web search.
+
+The model must accept images and point accurately. Measure a model and endpoint before switching:
+
+```bash
+python scripts/probe_models.py --base-url <endpoint> --api-key-env <VAR> --models <model-id>
+```
+
+It reports whether images actually arrive (some gateways silently drop them), whether the native
+toolset is accepted, and click accuracy with the portable tool on a test screen.
 
 ## Safety notes
 
@@ -133,6 +179,10 @@ dispatches across workers.
   typos. Use a dedicated demo account.
 - The presenter is instructed to stay on the goal, avoid payment forms and destructive actions.
   Treat the demo account as something a curious visitor could see.
+- Research explores in its own disposable desktop and is told to look, not change: forms are
+  opened and cancelled unless your hints allow creating sample data. Nothing the AI drafts reaches
+  visitors until you approve it. Keep the research service on a private network with
+  `RESEARCHER_TOKEN` set - its requests carry the demo credentials.
 
 ## License
 

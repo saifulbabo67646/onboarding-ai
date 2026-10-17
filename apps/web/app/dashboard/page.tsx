@@ -64,7 +64,7 @@ export default async function Dashboard() {
                   )}
                 </div>
                 <h3>{agent.name}</h3>
-                <p>{agent.goal}</p>
+                <p>{agent.goal || 'Demo is being prepared - open to review the AI draft.'}</p>
                 <span className="faint" style={{ fontSize: 12.5 }}>
                   {counts.get(agent.id) ?? 0} sessions · presented by {agent.presenterName}
                 </span>

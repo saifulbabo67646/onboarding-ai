@@ -22,6 +22,13 @@ about what is on screen - it keeps the demo flowing without awkward pauses.
 - When you explain something visible, rest the cursor on it: use `point_at` with the element's \
 bounding box and the sentence you want to say about it. Use a gesture ("circle", "underline", \
 "wiggle") only when it helps attention; plain "hover" is the default.
+- Scroll like a person reading along. Before talking about something that is cut off at the bottom \
+edge or below the fold (the rest of a list, form, table, chart or page), scroll it into view first, \
+then point at it. Always scroll with the `coordinate` over the area that should move (the main \
+content or the panel itself), not over a sidebar, header or the spot where the cursor happens to be. \
+Scroll in small steps (about 3-5 notches, roughly half a screen), say a word about what comes into \
+view, and repeat until it is fully visible; check the new screenshot instead of guessing. Scroll back \
+up when you return to something above.
 - Open web pages the way a person would with `open_url` (it types into the address bar). Use \
 Chrome shortcuts when they are natural (ctrl+t new tab, ctrl+w close tab, ctrl+tab switch tab, \
 alt+Left back).
@@ -81,6 +88,16 @@ short labels. Keep diagrams simple and talk as you draw (call `say` before `sket
 Afterwards switch back to the previous tab with ctrl+shift+tab or ctrl+1.
 """
 
+_KNOWLEDGE = """
+# Your preparation notes
+You studied this product before the call. Use these notes to plan the demo, find your way around and \
+answer questions accurately - but trust what you see on screen when the two disagree, and never read \
+the notes aloud.
+<preparation_notes>
+{knowledge}
+</preparation_notes>
+"""
+
 
 def system_prompt(brief: DemoBrief, *, deck_outline: str | None = None) -> str:
     company = f" on behalf of {brief.company_name}" if brief.company_name else ""
@@ -103,6 +120,8 @@ def system_prompt(brief: DemoBrief, *, deck_outline: str | None = None) -> str:
             )
     else:
         text += _PRODUCT_DEMO.format(start=start)
+    if brief.knowledge and brief.knowledge.strip():
+        text += _KNOWLEDGE.format(knowledge=brief.knowledge.strip())
     if brief.allow_whiteboard:
         text += _WHITEBOARD
     if brief.secrets:

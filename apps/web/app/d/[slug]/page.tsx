@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { JoinDemo } from '@/components/live/JoinDemo';
-import { toPublic } from '@/lib/agents';
+import { isJoinable, toPublic } from '@/lib/agents';
 import { getStore } from '@/lib/server/store';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ type Props = { params: Promise<{ slug: string }> };
 
 async function load(slug: string) {
   const agent = await getStore().getAgentBySlug(slug);
-  return agent?.published ? toPublic(agent) : undefined;
+  return agent && isJoinable(agent) ? toPublic(agent) : undefined;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

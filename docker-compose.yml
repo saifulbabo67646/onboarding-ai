@@ -1,4 +1,4 @@
-# Full stack: dashboard + presenter worker. Every live session gets its own
+# Full stack: dashboard + presenter worker + research service. Every live session gets its own
 # sandbox container, started by the worker through the Docker socket.
 #
 #   cp .env.example .env    # fill in the keys
@@ -18,6 +18,7 @@ services:
     environment:
       AGENT_CALLBACK_BASE_URL: http://web:3000
       DATABASE_URL: postgres://onboard:onboard@postgres:5432/onboard
+      RESEARCHER_URL: http://researcher:8790
     ports:
       - "3000:3000"
     depends_on:
@@ -44,6 +45,23 @@ services:
     build:
       context: .
       dockerfile: apps/agent/Dockerfile
+    env_file: .env
+    environment:
+      SANDBOX_PROVIDER: docker
+      SANDBOX_IMAGE: onboard-sandbox:latest
+      SANDBOX_DOCKER_NETWORK: onboarding-ai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - web
+    restart: unless-stopped
+
+  # Learns a product (docs + hands-on exploration in its own sandbox) and
+  # drafts the demo for the owner to review. Only the web app talks to it.
+  researcher:
+    build:
+      context: .
+      dockerfile: packages/researcher/Dockerfile
     env_file: .env
     environment:
       SANDBOX_PROVIDER: docker

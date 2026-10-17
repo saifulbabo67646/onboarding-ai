@@ -28,6 +28,8 @@ export const presenter = pgTable(
     name: text('name').notNull(),
     mode: text('mode').notNull(),
     goal: text('goal').notNull(),
+    /** Background the presenter studies before the call; usually drafted by AI research. */
+    knowledge: text('knowledge').notNull().default(''),
     startUrl: text('start_url').notNull(),
     description: text('description').notNull().default(''),
     presenterName: text('presenter_name').notNull(),
@@ -96,6 +98,36 @@ export const sessionEvent = pgTable(
   },
   (t) => [index('session_event_session_idx').on(t.sessionId, t.ts)],
 );
+
+/** One AI research run for a presenter: progress log and the drafted demo. */
+export const researchJob = pgTable(
+  'research_job',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    presenterId: uuid('presenter_id')
+      .notNull()
+      .references(() => presenter.id, { onDelete: 'cascade' }),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    notes: text('notes').notNull().default(''),
+    docsUrls: jsonb('docs_urls').$type<string[]>().notNull().default([]),
+    state: text('state').notNull().default('queued'),
+    phase: text('phase'),
+    error: text('error'),
+    warnings: jsonb('warnings').$type<string[]>().notNull().default([]),
+    /** Progress and status events from the researcher, capped (see lib/research.ts). */
+    events: jsonb('events').$type<ResearchEventRow[]>().notNull().default([]),
+    draft: jsonb('draft').$type<Record<string, unknown>>(),
+    revisions: integer('revisions').notNull().default(0),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+  },
+  (t) => [index('research_job_presenter_idx').on(t.presenterId, t.startedAt)],
+);
+
+export type ResearchEventRow = { type: string; data: Record<string, unknown>; ts: number };
 
 export const presenterRelations = relations(presenter, ({ one, many }) => ({
   organization: one(organization, {

@@ -1,6 +1,6 @@
 'use client';
 
-import { KeyRound, MonitorPlay, Plus, Presentation, Trash2 } from 'lucide-react';
+import { MonitorPlay, Plus, Presentation } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import {
@@ -14,8 +14,9 @@ import {
   Textarea,
   type Option,
 } from '@/components/ui';
-import type { DemoAgent, DemoMode, Secret } from '@/lib/types';
+import type { DemoAgent, DemoMode } from '@/lib/types';
 import styles from './PresenterForm.module.css';
+import { emptySecret, SecretsEditor } from './SecretsEditor';
 
 type FormState = Omit<DemoAgent, 'id' | 'workspaceId' | 'slug' | 'createdAt' | 'updatedAt'>;
 
@@ -23,6 +24,7 @@ const EMPTY: FormState = {
   name: '',
   mode: 'product_demo',
   goal: '',
+  knowledge: '',
   startUrl: '',
   description: '',
   presenterName: 'Alex',
@@ -79,11 +81,6 @@ export function PresenterForm({ initial }: { initial?: DemoAgent }) {
     setForm((f) => ({ ...f, [key]: value }));
     setSavedAt(null);
   };
-  const setSecret = (i: number, patch: Partial<Secret>) =>
-    set(
-      'secrets',
-      form.secrets.map((s, j) => (i === j ? { ...s, ...patch } : s)),
-    );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -165,7 +162,20 @@ export function PresenterForm({ initial }: { initial?: DemoAgent }) {
               value={form.goal}
               onChange={(e) => set('goal', e.target.value)}
               placeholder={GOAL_PLACEHOLDER[form.mode]}
-              required
+              required={form.published}
+            />
+          </Field>
+          <Field
+            label="Preparation notes"
+            htmlFor="knowledge"
+            optional
+            hint="Background the presenter studies before every call; never read out verbatim. AI research fills this in for you."
+          >
+            <Textarea
+              id="knowledge"
+              value={form.knowledge}
+              onChange={(e) => set('knowledge', e.target.value)}
+              placeholder="Product facts, where features live, answers to common questions."
             />
           </Field>
           <Switch
@@ -260,7 +270,7 @@ export function PresenterForm({ initial }: { initial?: DemoAgent }) {
           <Button
             size="sm"
             icon={Plus}
-            onClick={() => set('secrets', [...form.secrets, { name: '', value: '' }])}
+            onClick={() => set('secrets', [...form.secrets, emptySecret()])}
           >
             Add secret
           </Button>
@@ -272,40 +282,11 @@ export function PresenterForm({ initial }: { initial?: DemoAgent }) {
             <code>password</code>).
           </p>
         ) : (
-          <div className="stack-sm">
-            {form.secrets.map((s, i) => (
-              <div className={styles.secretRow} key={i}>
-                <KeyRound size={16} className="text-muted" aria-hidden />
-                <Input
-                  aria-label="Secret name"
-                  mono
-                  placeholder="name"
-                  value={s.name}
-                  onChange={(e) => setSecret(i, { name: e.target.value })}
-                />
-                <Input
-                  aria-label="Secret value"
-                  type="password"
-                  placeholder={
-                    savedSecrets.has(s.name) ? '•••••••• saved — leave empty to keep' : 'value'
-                  }
-                  value={s.value}
-                  onChange={(e) => setSecret(i, { value: e.target.value })}
-                />
-                <Button
-                  variant="ghost"
-                  icon={Trash2}
-                  aria-label={`Remove ${s.name || 'secret'}`}
-                  onClick={() =>
-                    set(
-                      'secrets',
-                      form.secrets.filter((_, j) => j !== i),
-                    )
-                  }
-                />
-              </div>
-            ))}
-          </div>
+          <SecretsEditor
+            secrets={form.secrets}
+            onChange={(secrets) => set('secrets', secrets)}
+            savedNames={savedSecrets}
+          />
         )}
       </Card>
 

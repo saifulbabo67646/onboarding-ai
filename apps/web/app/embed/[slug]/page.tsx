@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { JoinDemo } from '@/components/live/JoinDemo';
-import { toPublic } from '@/lib/agents';
+import { isJoinable, toPublic } from '@/lib/agents';
 import { getStore } from '@/lib/server/store';
 
 export const dynamic = 'force-dynamic';
@@ -16,6 +16,6 @@ type Props = {
 export default async function EmbedPage({ params, searchParams }: Props) {
   const [{ slug }, { name }] = await Promise.all([params, searchParams]);
   const agent = await getStore().getAgentBySlug(slug);
-  if (!agent?.published) notFound();
+  if (!agent || !isJoinable(agent)) notFound();
   return <JoinDemo agent={toPublic(agent)} embedded initialName={(name ?? '').slice(0, 60)} />;
 }

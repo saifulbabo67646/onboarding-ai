@@ -1,5 +1,6 @@
 import { Clock, Pencil, Radio, Users } from 'lucide-react';
 import { notFound } from 'next/navigation';
+import { ResearchPanel } from '@/components/app/ResearchPanel';
 import { SessionsTable } from '@/components/app/SessionsTable';
 import { Button, Card, CodeBlock, CopyField, DescriptionList, StatCard } from '@/components/ui';
 import { formatDuration } from '@/lib/format';
@@ -16,6 +17,8 @@ export default async function PresenterOverview({ params }: { params: Promise<{ 
   const agent = await store.getAgent(workspace.id, id);
   if (!agent) notFound();
   const sessions = await store.listSessions(workspace.id, { agentId: id, limit: 1000 });
+  const research =
+    agent.mode === 'product_demo' ? await store.latestResearchJob(workspace.id, id) : undefined;
   const stats = overviewStats([agent], sessions);
   const origin = await publicOrigin();
   const shareUrl = `${origin}/d/${agent.slug}`;
@@ -24,6 +27,9 @@ export default async function PresenterOverview({ params }: { params: Promise<{ 
 
   return (
     <div className="stack-lg">
+      {agent.mode === 'product_demo' && (research || !agent.goal) && (
+        <ResearchPanel agentId={agent.id} initialJob={research ?? null} />
+      )}
       <div className={styles.stats}>
         <StatCard label="Total sessions" value={sessions.length} icon={Users} />
         <StatCard label="Live now" value={stats.liveNow} icon={Radio} />
@@ -66,7 +72,9 @@ export default async function PresenterOverview({ params }: { params: Promise<{ 
           }
         >
           <div className="stack">
-            <p className={styles.goal}>{agent.goal}</p>
+            <p className={styles.goal}>
+              {agent.goal || 'No goal yet. Approve the AI draft or write one in Settings.'}
+            </p>
             <DescriptionList
               items={[
                 {

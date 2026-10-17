@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isJoinable,
   parseAgentInput,
   slugify,
   toBrief,
@@ -27,6 +28,8 @@ describe('parseAgentInput', () => {
 
   it('rejects missing goal, bad mode and non-http URLs', () => {
     expect(() => parseAgentInput({ ...valid, goal: ' ' })).toThrow(ValidationError);
+    // An unpublished presenter may wait for its AI-drafted goal.
+    expect(parseAgentInput({ ...valid, goal: '', published: false }).goal).toBe('');
     expect(() => parseAgentInput({ ...valid, mode: 'karaoke' })).toThrow(ValidationError);
     expect(() => parseAgentInput({ ...valid, startUrl: 'javascript:alert(1)' })).toThrow(
       ValidationError,
@@ -77,7 +80,17 @@ describe('views', () => {
     expect(JSON.stringify(toOwnerView(agent))).not.toContain('hunter2');
   });
 
+  it('only lets visitors join published presenters with a goal', () => {
+    expect(isJoinable(agent)).toBe(true);
+    expect(isJoinable({ ...agent, published: false })).toBe(false);
+    expect(isJoinable({ ...agent, goal: '' })).toBe(false);
+  });
+
   it('builds the worker brief with snake_case keys', () => {
+    expect(toBrief(agent, 'Sam').knowledge).toBeNull();
+    expect(toBrief({ ...agent, knowledge: 'Reports live in Insights' }, 'Sam').knowledge).toBe(
+      'Reports live in Insights',
+    );
     const brief = toBrief(agent, 'Sam');
     expect(brief).toMatchObject({
       goal: agent.goal,

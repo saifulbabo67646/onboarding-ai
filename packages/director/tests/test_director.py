@@ -53,6 +53,8 @@ class FakeClient:
         self.requests = []
         self.delay = delay
         self.beta = SimpleNamespace(messages=SimpleNamespace(stream=self._stream))
+        # Portable (non-Claude) backends use the plain surface.
+        self.messages = SimpleNamespace(stream=self._stream)
 
     def _stream(self, **params):
         self.requests.append(json.loads(json.dumps(params, default=lambda o: o.__dict__)))
@@ -306,3 +308,105 @@ def test_end_demo_is_described_as_hanging_up():
 
     assert "Hang up" in END_DEMO["description"]
     assert "hangs up the call for everyone" in system_prompt(DemoBrief(goal="g"))
+
+
+def test_preparation_notes_reach_the_system_prompt():
+    from onboard_director.prompts import system_prompt
+
+    brief = DemoBrief.from_dict({"goal": "g", "knowledge": "Reports live under Insights > Reports."})
+    assert "Insights > Reports" in system_prompt(brief)
+    assert "preparation_notes" not in system_prompt(DemoBrief(goal="g"))
+
+
+# -- portable backends (Anthropic-compatible providers) ----------------------------
+
+from onboard_director.backend import ModelBackend, hoist_images, portable_params, prune_images
+from onboard_director.tools import as_computer_call, portable_computer_tool
+
+
+def test_portable_tool_mirrors_the_toolset_and_maps_to_the_same_actions():
+    tool = portable_computer_tool(1280, 800)
+    assert tool["name"] == "computer" and "1280x800" in tool["description"]
+    assert "left_click" in tool["input_schema"]["properties"]["action"]["enum"]
+    portable = tool_use("p", "computer", {"action": "double_click", "coordinate": [50, 40]})
+    native = tool_use("n", "double_click", {"coordinate": [50, 40]}, toolset="computer")
+    assert as_computer_call(portable)[0] == as_computer_call(native)[0] == "double_click"
+    assert computer_action(*as_computer_call(portable)) == computer_action(*as_computer_call(native))
+    assert as_computer_call(tool_use("s", "say", {"text": "hi"})) is None
+
+
+def test_portable_params_strip_claude_only_fields():
+    params = {
+        "model": "m", "max_tokens": 10, "messages": [], "betas": ["x"], "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "low"}, "context_management": {}, "fallbacks": "default",
+        "cache_control": {"type": "ephemeral"},
+        "system": [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}],
+        "tools": [{"name": "say", "description": "d", "input_schema": {}, "eager_input_streaming": True}],
+    }
+    out = portable_params(params)
+    assert out == {"model": "m", "max_tokens": 10, "messages": [], "system": "sys",
+                   "tools": [{"name": "say", "description": "d", "input_schema": {}}]}
+    with pytest.raises(ValueError):
+        portable_params({"tools": [{"type": "computer_toolset_20260801"}]})
+
+
+def test_prune_and_hoist_images():
+    img = {"type": "image", "source": {}}
+    messages = [
+        {"role": "user", "content": [img, {"type": "text", "text": "a"}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": [img]}]},
+        {"role": "user", "content": [img]},
+    ]
+    prune_images(messages, keep=2)
+    assert messages[0]["content"][0]["type"] == "text"
+    assert messages[1]["content"][0]["content"][0] == img and messages[2]["content"][0] == img
+
+    hoisted = hoist_images([
+        {"type": "tool_result", "tool_use_id": "1", "content": [{"type": "text", "text": "OK"}, img]},
+        {"type": "tool_result", "tool_use_id": "2", "content": "Spoken."},
+    ])
+    assert [b["type"] for b in hoisted] == ["tool_result", "tool_result", "text", "image"]
+    assert hoisted[0]["content"] == [{"type": "text", "text": "OK"}]
+
+
+def test_backend_detection_from_env(monkeypatch):
+    assert ModelBackend("claude-opus-5").is_native
+    assert not ModelBackend("claude-opus-5", base_url="https://proxy.example").is_native
+    monkeypatch.setenv("X_MODEL", "deepseek-v4.1-flash")
+    monkeypatch.setenv("X_BASE_URL", "https://api.example.com")
+    backend = ModelBackend.from_env("X", default_model="claude-opus-5")
+    assert backend.model == "deepseek-v4.1-flash" and not backend.is_native
+    monkeypatch.setenv("X_NATIVE", "1")
+    assert ModelBackend.from_env("X", default_model="m").is_native
+
+
+async def test_director_presents_on_a_portable_backend():
+    brief = DemoBrief(goal="Show the dashboard", start_url="https://app.example.com", audience_name="Sam")
+    client = FakeClient(
+        [
+            (
+                [
+                    tool_use("t1", "say", {"text": "Hi Sam!"}),
+                    tool_use("t2", "computer", {"action": "left_click", "coordinate": [100, 200]}),
+                ],
+                "tool_use",
+            ),
+            ([tool_use("t3", "end_demo", {"summary": "done"})], "tool_use"),
+        ]
+    )
+    computer, narrator = FakeComputer(), FakeNarrator()
+    config = DirectorConfig(model="deepseek-v4.1-flash", settle_seconds=0)
+    director = Director(brief, computer, narrator, client=client, config=config)
+    assert await director.run() == "done"
+    assert computer.actions[0] == {"type": "click", "button": "left", "count": 1, "x": 100.0, "y": 200.0}
+
+    first = client.requests[0]
+    for key in ("betas", "thinking", "output_config", "context_management", "fallbacks"):
+        assert key not in first
+    assert isinstance(first["system"], str)
+    assert first["tools"][0]["name"] == "computer" and "type" not in first["tools"][0]
+    # The screenshot taken after acting travels as top-level content, not inside the tool result.
+    followup = client.requests[1]["messages"][-1]["content"]
+    inner = [c for b in followup if b["type"] == "tool_result" and isinstance(b["content"], list) for c in b["content"]]
+    assert all(c["type"] != "image" for c in inner)
+    assert followup[-1]["type"] == "image"

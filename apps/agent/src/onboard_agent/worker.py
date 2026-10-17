@@ -25,7 +25,7 @@ from livekit import rtc
 from livekit.agents import AgentServer, AgentSession, JobContext, cli
 from livekit.agents.voice import room_io
 from livekit.plugins import deepgram, elevenlabs
-from onboard_director import DemoBrief, Director, DirectorConfig
+from onboard_director import DemoBrief, Director, DirectorConfig, ModelBackend
 from onboard_sandbox import provider_from_env
 
 from .listening import ListeningConfig, has_words
@@ -42,11 +42,18 @@ HANG_UP_DELAY = float(os.environ.get("HANG_UP_DELAY", "1.5"))
 server = AgentServer()
 
 
-def _director_config() -> DirectorConfig:
+def _director_backend() -> ModelBackend:
+    """DIRECTOR_MODEL plus optional DIRECTOR_BASE_URL / DIRECTOR_API_KEY / DIRECTOR_NATIVE
+    for Anthropic-compatible providers (see onboard_director.backend)."""
+    return ModelBackend.from_env("DIRECTOR", default_model="claude-opus-5-5")
+
+
+def _director_config(backend: ModelBackend) -> DirectorConfig:
     return DirectorConfig(
-        model=os.environ.get("DIRECTOR_MODEL", "claude-opus-5-5"),
+        model=backend.model,
         effort=os.environ.get("DIRECTOR_EFFORT", "medium"),
         fallbacks=os.environ.get("DIRECTOR_FALLBACKS", "1") != "0",
+        native=backend.is_native,
     )
 
 
@@ -113,7 +120,15 @@ async def entrypoint(ctx: JobContext) -> None:
     brief.audience_name = brief.audience_name or participant.name or None
     reporter.emit("status", {"state": "joined", "audience": brief.audience_name})
 
-    director = Director(brief, sandbox, LiveKitNarrator(session), config=_director_config(), on_event=reporter.emit)
+    backend = _director_backend()
+    director = Director(
+        brief,
+        sandbox,
+        LiveKitNarrator(session),
+        client=backend.client(),
+        config=_director_config(backend),
+        on_event=reporter.emit,
+    )
     agent.attach(director)
 
     # Freeze the mouse only once real words are heard (not on breaths or noise),

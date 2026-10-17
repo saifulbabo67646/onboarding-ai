@@ -6,18 +6,23 @@ presentation: talking while it works, pointing at what it explains, handling
 interruptions and questions.
 """
 
+from .backend import ModelBackend
 from .brief import DemoBrief, normalize_start_url
 from .director import Director, DirectorConfig, is_backchannel
 from .interfaces import Computer, Narrator, PrintNarrator, Speech
+from .screen import ScreenView, image_block
 
 __all__ = [
     "Computer",
     "DemoBrief",
     "Director",
     "DirectorConfig",
+    "ModelBackend",
     "Narrator",
     "PrintNarrator",
+    "ScreenView",
     "Speech",
+    "image_block",
     "is_backchannel",
     "normalize_start_url",
 ]

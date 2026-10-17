@@ -1,34 +1,11 @@
 import type { DemoAgent, DemoMode, PublicAgent, Secret } from './types';
+import { object, str, url, ValidationError } from './validation';
+
+export { ValidationError };
 
 export type AgentInput = Omit<DemoAgent, 'id' | 'workspaceId' | 'slug' | 'createdAt' | 'updatedAt'>;
 
-export class ValidationError extends Error {}
-
 const MODES: DemoMode[] = ['product_demo', 'presentation'];
-
-function str(value: unknown, field: string, { required = false, max = 4000 } = {}): string {
-  if (value === undefined || value === null) {
-    if (required) throw new ValidationError(`${field} is required`);
-    return '';
-  }
-  if (typeof value !== 'string') throw new ValidationError(`${field} must be text`);
-  const trimmed = value.trim();
-  if (required && !trimmed) throw new ValidationError(`${field} is required`);
-  if (trimmed.length > max) throw new ValidationError(`${field} is too long (max ${max})`);
-  return trimmed;
-}
-
-function url(value: unknown, field: string): string {
-  const raw = str(value, field, { required: true, max: 2000 });
-  const withScheme = /^[a-z]+:\/\//i.test(raw) ? raw : `https://${raw}`;
-  try {
-    const parsed = new URL(withScheme);
-    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error();
-    return parsed.toString();
-  } catch {
-    throw new ValidationError(`${field} must be a valid http(s) URL`);
-  }
-}
 
 function secrets(value: unknown): Secret[] {
   if (value === undefined || value === null) return [];
@@ -43,8 +20,8 @@ function secrets(value: unknown): Secret[] {
 
 /** Validate and normalise dashboard input. `previous` keeps secret values the client didn't resend. */
 export function parseAgentInput(body: unknown, previous?: DemoAgent): AgentInput {
-  if (!body || typeof body !== 'object') throw new ValidationError('Expected a JSON object');
-  const b = body as Record<string, unknown>;
+  const b = object(body);
+  const published = b.published === undefined ? true : Boolean(b.published);
   const mode = (b.mode ?? 'product_demo') as DemoMode;
   if (!MODES.includes(mode)) throw new ValidationError('mode must be product_demo or presentation');
   const maxMinutes = Number(b.maxMinutes ?? 30);
@@ -64,7 +41,9 @@ export function parseAgentInput(body: unknown, previous?: DemoAgent): AgentInput
   return {
     name: str(b.name, 'name', { required: true, max: 120 }),
     mode,
-    goal: str(b.goal, 'goal', { required: true, max: 8000 }),
+    // A paused presenter may have no goal yet (its demo is still being researched).
+    goal: str(b.goal, 'goal', { required: published, max: 8000 }),
+    knowledge: str(b.knowledge, 'knowledge', { max: 30000 }),
     startUrl: url(b.startUrl, 'startUrl'),
     description: str(b.description, 'description', { max: 1000 }),
     presenterName: str(b.presenterName, 'presenterName', { max: 60 }) || 'Alex',
@@ -75,8 +54,24 @@ export function parseAgentInput(body: unknown, previous?: DemoAgent): AgentInput
     allowWhiteboard: Boolean(b.allowWhiteboard),
     maxMinutes,
     secrets: parsedSecrets,
-    published: b.published === undefined ? true : Boolean(b.published),
+    published,
   };
+}
+
+/** The editable fields of a stored agent, e.g. to update a few of them. */
+export function agentInputOf(agent: DemoAgent): AgentInput {
+  const input: Partial<DemoAgent> = { ...agent };
+  delete input.id;
+  delete input.workspaceId;
+  delete input.slug;
+  delete input.createdAt;
+  delete input.updatedAt;
+  return input as AgentInput;
+}
+
+/** Whether visitors can start a session: published and with something to present. */
+export function isJoinable(agent: DemoAgent): boolean {
+  return agent.published && Boolean(agent.goal.trim());
 }
 
 export function slugify(name: string): string {
@@ -111,6 +106,7 @@ export function toOwnerView(agent: DemoAgent): DemoAgent {
 export function toBrief(agent: DemoAgent, visitorName: string) {
   return {
     goal: agent.goal,
+    knowledge: agent.knowledge || null,
     mode: agent.mode,
     start_url: agent.startUrl,
     presenter_name: agent.presenterName,

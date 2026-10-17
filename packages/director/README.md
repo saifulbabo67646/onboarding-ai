@@ -6,7 +6,8 @@ questions, and wraps up when the goal is met.
 
 It is independent of any meeting platform. You give it:
 
-- a `DemoBrief` - the goal in plain language, a start URL, persona and options;
+- a `DemoBrief` - the goal in plain language, a start URL, persona and options, and optional
+  preparation notes (`knowledge`; [`onboard-researcher`](../researcher) writes these for you);
 - a `Computer` - anything shaped like `onboard_sandbox.SandboxClient`;
 - a `Narrator` - anything with `say(text) -> Speech` (LiveKit TTS, a phone line, a print
   statement…).
@@ -19,6 +20,7 @@ brief = DemoBrief(
     start_url="https://app.example.com",
     presenter_name="Maya",
     secrets={"password": "..."},           # typed via type_secret, never sent to the model
+    knowledge="Reports live under Insights > Reports. ...",  # optional preparation notes
 )
 director = Director(brief, sandbox_client, narrator, on_event=print)
 director.hear("Sorry, how do permissions work?")     # feed audience transcripts any time

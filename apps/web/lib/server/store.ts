@@ -2,22 +2,28 @@ import 'server-only';
 import { randomBytes } from 'crypto';
 import { and, asc, count, desc, eq, gte, inArray } from 'drizzle-orm';
 import { slugify, type AgentInput } from '../agents';
+import { applyResearchEvent } from '../research';
 import type {
   DemoAgent,
   DemoSession,
   DemoSessionDetail,
+  ResearchDraft,
+  ResearchInput,
+  ResearchJob,
+  ResearchPhase,
+  ResearchState,
   SessionEvent,
   SessionState,
 } from '../types';
 import { getDb, type Database } from './db/client';
-import { demoSession, presenter, sessionEvent } from './db/schema';
+import { demoSession, presenter, researchJob, sessionEvent } from './db/schema';
 import { decryptSecret, encryptSecret } from './secrets';
 
 /**
  * All persistence goes through this class. Every dashboard read and write is
  * scoped by `workspaceId`, so one workspace can never see another's data.
  * The only unscoped lookups are the public ones (by slug, for visitors) and
- * the worker callback (by session id, authenticated with a shared secret).
+ * the worker and researcher callbacks (by id, authenticated with a shared secret).
  */
 export class Store {
   constructor(private readonly db: Database) {}
@@ -180,6 +186,77 @@ export class Store {
     });
   }
 
+  // ── AI research ────────────────────────────────────────────
+
+  async createResearchJob(agent: DemoAgent, input: ResearchInput): Promise<ResearchJob> {
+    const [row] = await this.db
+      .insert(researchJob)
+      .values({ presenterId: agent.id, organizationId: agent.workspaceId, ...input })
+      .returning();
+    // Keep a short history per presenter.
+    const older = await this.db
+      .select({ id: researchJob.id })
+      .from(researchJob)
+      .where(eq(researchJob.presenterId, agent.id))
+      .orderBy(desc(researchJob.startedAt))
+      .offset(MAX_RESEARCH_JOBS_PER_PRESENTER);
+    if (older.length > 0) {
+      await this.db.delete(researchJob).where(
+        inArray(
+          researchJob.id,
+          older.map((o) => o.id),
+        ),
+      );
+    }
+    return toResearchJob(row);
+  }
+
+  async latestResearchJob(workspaceId: string, agentId: string): Promise<ResearchJob | undefined> {
+    if (!isUuid(agentId)) return undefined;
+    const [row] = await this.db
+      .select()
+      .from(researchJob)
+      .where(and(eq(researchJob.presenterId, agentId), eq(researchJob.organizationId, workspaceId)))
+      .orderBy(desc(researchJob.startedAt))
+      .limit(1);
+    return row && toResearchJob(row);
+  }
+
+  /** Researcher callback: fold progress, warnings and the draft into the job. */
+  async appendResearchEvents(id: string, events: SessionEvent[]): Promise<ResearchJob | undefined> {
+    if (!isUuid(id)) return undefined;
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(researchJob).where(eq(researchJob.id, id)).for('update');
+      if (!row) return undefined;
+      const job = toResearchJob(row);
+      for (const event of events) applyResearchEvent(job, event);
+      const [updated] = await tx
+        .update(researchJob)
+        .set(researchPatch(job))
+        .where(eq(researchJob.id, id))
+        .returning();
+      return toResearchJob(updated);
+    });
+  }
+
+  async updateResearchJob(
+    workspaceId: string,
+    id: string,
+    patch: Pick<Partial<ResearchJob>, 'draft' | 'revisions' | 'appliedAt'>,
+  ): Promise<ResearchJob | undefined> {
+    if (!isUuid(id)) return undefined;
+    const set: Partial<typeof researchJob.$inferInsert> = {};
+    if ('draft' in patch) set.draft = (patch.draft ?? null) as Record<string, unknown> | null;
+    if ('revisions' in patch) set.revisions = patch.revisions;
+    if ('appliedAt' in patch) set.appliedAt = patch.appliedAt ? new Date(patch.appliedAt) : null;
+    const [row] = await this.db
+      .update(researchJob)
+      .set(set)
+      .where(and(eq(researchJob.id, id), eq(researchJob.organizationId, workspaceId)))
+      .returning();
+    return row && toResearchJob(row);
+  }
+
   // ── Abuse limits for the public join endpoint ──────────────
 
   async countJoinsFromIp(ipHash: string, since: Date): Promise<number> {
@@ -209,6 +286,9 @@ export class Store {
 
 type PresenterRow = typeof presenter.$inferSelect;
 type SessionRow = typeof demoSession.$inferSelect;
+type ResearchRow = typeof researchJob.$inferSelect;
+
+const MAX_RESEARCH_JOBS_PER_PRESENTER = 10;
 
 function fromInput(input: AgentInput) {
   return {
@@ -225,6 +305,7 @@ function toAgent(row: PresenterRow): DemoAgent {
     name: row.name,
     mode: row.mode as DemoAgent['mode'],
     goal: row.goal,
+    knowledge: row.knowledge,
     startUrl: row.startUrl,
     description: row.description,
     presenterName: row.presenterName,
@@ -255,6 +336,39 @@ function toSession(row: SessionRow): DemoSession {
     lastEventAt: row.lastEventAt?.toISOString(),
     summary: row.summary ?? undefined,
     messageCount: row.messageCount,
+  };
+}
+
+function toResearchJob(row: ResearchRow): ResearchJob {
+  return {
+    id: row.id,
+    agentId: row.presenterId,
+    workspaceId: row.organizationId,
+    notes: row.notes,
+    docsUrls: row.docsUrls,
+    state: row.state as ResearchState,
+    phase: (row.phase ?? undefined) as ResearchPhase | undefined,
+    error: row.error ?? undefined,
+    warnings: row.warnings,
+    events: row.events,
+    draft: (row.draft ?? undefined) as ResearchDraft | undefined,
+    revisions: row.revisions,
+    startedAt: row.startedAt.toISOString(),
+    finishedAt: row.finishedAt?.toISOString(),
+    appliedAt: row.appliedAt?.toISOString(),
+  };
+}
+
+/** The columns `applyResearchEvent` may change. */
+function researchPatch(job: ResearchJob): Partial<typeof researchJob.$inferInsert> {
+  return {
+    state: job.state,
+    phase: job.phase ?? null,
+    error: job.error ?? null,
+    warnings: job.warnings,
+    events: job.events,
+    draft: (job.draft ?? null) as Record<string, unknown> | null,
+    finishedAt: job.finishedAt ? new Date(job.finishedAt) : null,
   };
 }
 

@@ -1,8 +1,9 @@
 """The demo brief: everything the owner configured for a presenting agent.
 
-There is no knowledge base and no scripted step list - just a goal written in
-plain language, a starting point, and a few presentation preferences. The
-agent figures out the rest by looking at the screen.
+There is no scripted click-path - just a goal written in plain language, a
+starting point, a few presentation preferences and, optionally, preparation
+notes about the product. The agent figures out the rest by looking at the
+screen.
 """
 
 from __future__ import annotations
@@ -31,6 +32,9 @@ class DemoBrief:
     language: str = "English"
     allow_whiteboard: bool = False
     max_minutes: float = 30.0
+    # Background the presenter prepared beforehand (product facts, where things
+    # live, FAQ) - typically written by onboard-researcher and reviewed by the owner.
+    knowledge: str | None = None
     # name -> value. Values are typed into the sandbox but never shown to the model.
     secrets: dict[str, str] = field(default_factory=dict)
 

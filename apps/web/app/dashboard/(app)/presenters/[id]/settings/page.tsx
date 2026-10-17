@@ -12,7 +12,8 @@ export default async function PresenterSettings({ params }: { params: Promise<{ 
   if (!agent) notFound();
   return (
     <div className="stack-lg content-narrow">
-      <PresenterForm initial={toOwnerView(agent)} />
+      {/* Remount when an approved AI draft changes the goal. */}
+      <PresenterForm key={agent.updatedAt} initial={toOwnerView(agent)} />
       <DeletePresenter id={agent.id} name={agent.name} />
     </div>
   );

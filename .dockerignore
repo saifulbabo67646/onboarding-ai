@@ -1,0 +1,47 @@
+# Every image builds from the repository root. Keep the context small and keep
+# local secrets out of image layers. The Dockerfiles only COPY packages/*,
+# apps/agent and apps/web (package.json, pnpm-lock.yaml, drizzle/, public/,
+# scripts/, sources), none of which are excluded here.
+
+# VCS and editor/agent folders
+.git
+.github
+.windsurf
+.claude
+.DS_Store
+
+# Dependencies and build output (installed fresh inside the image)
+**/node_modules
+**/.next
+**/out
+**/*.tsbuildinfo
+**/.venv
+venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/*.egg-info
+**/dist
+**/build
+coverage
+**/coverage
+
+# Local configuration and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+**/.env.local
+**/.env.*.local
+**/.data
+*.pem
+
+# Logs, docs and media
+*.log
+**/*.log
+docs
+media
+recordings
+**/*.mp4
+**/*.webm

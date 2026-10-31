@@ -2,38 +2,42 @@
 
 **Live product demos and presentations, given by an AI presenter that feels like a person.**
 
+<!-- DEMO_VIDEO -->
+
 You give a presenter a **goal** ("demo our analytics dashboard to a prospect: log in, explain the
 KPIs, build a report for last month and share it"). When someone opens the share link, the
 presenter joins a video call, **shares its screen** and walks them through it - talking
-naturally, moving a real mouse, typing with a human rhythm, opening tabs, pointing at what it is
-explaining, and pausing to answer questions whenever it is interrupted.
+naturally, moving a real mouse, typing with a human rhythm, pointing at what it is explaining,
+and pausing to answer questions whenever it is interrupted.
 
 No scripts, no click-paths. You don't even have to write the goal: give it your app's link and a
-demo login, and it **learns the product on its own** - reads your docs, signs in, explores the app -
-and drafts the demo for you to approve once.
+demo login, and it **learns the product on its own** - reads your docs, signs in, explores the
+app - and drafts the demo for you to approve once.
 
-## What it can do
+[Getting started](docs/getting-started.md) · [Documentation](docs/README.md) ·
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
-- **Learns your product by itself** - paste a URL (plus demo credentials). The researcher reads
-  your public docs with web search, explores the live app hands-on in a private sandbox, and
-  writes a demo playbook: the goal, a section-by-section flow with verified menu paths, talking
-  points, login steps, likely questions and things to avoid. Review it once, ask for changes in
-  plain language ("make it 10 minutes, skip billing"), approve - every visitor gets that demo.
-- **Product demos** - start from any web app URL, log in with stored secrets (typed, never
-  revealed), and show the workflows the goal describes.
-- **Slide presentations** - paste a public Google Slides link (or a `.pptx` / `.pdf` URL) and it
-  presents slide by slide, explaining in its own words and pointing at charts and numbers.
-- **Whiteboard explanations** - optionally opens Excalidraw and sketches boxes, arrows and
-  labels while it explains an idea.
-- **Human presence** - curved, Fitts'-law mouse motion with minimum-jerk velocity and small
-  overshoots; typing at ~70 wpm with occasional corrected typos; the cursor rests on (or circles,
-  or underlines) what is being talked about; the mouse freezes politely when the visitor speaks.
-- **Embed on any website** - each presenter has a one-line script snippet that adds an
-  Intercom-style launcher to your own site; the live session opens right on the page.
-- **Interruptions** - visitors just talk. Short acknowledgements ("mhm", "ok") don't derail it;
-  real questions stop the current action, get answered (on screen if useful), and the demo resumes.
-  Breathing and room noise don't count: an interruption needs recognised words, and LiveKit
-  Cloud's background voice cancellation filters the visitor's mic (tunable, see `.env.example`).
+## Features
+
+- **Learns your product by itself** - paste a URL and demo credentials. The researcher reads your
+  public docs, explores the live app in a private sandbox, and drafts the goal and preparation
+  notes. Ask for changes in plain language, approve, and every visitor gets that demo.
+  [More](docs/ai-research.md)
+- **Product demos** - starts from any web app URL, logs in with stored secrets (typed, never
+  shown to the model), and shows the workflows the goal describes.
+- **Slide presentations** - a public Google Slides link (or a `.pptx` / `.pdf` URL), presented
+  slide by slide in its own words, pointing at charts and numbers.
+- **Whiteboard** - optionally opens Excalidraw and sketches boxes, arrows and labels while it
+  explains.
+- **Human presence** - curved, Fitts'-law mouse motion with small overshoots, typing at ~70 wpm
+  with corrected typos, the cursor resting on what is being discussed, and the mouse freezing
+  when the visitor speaks.
+- **Interruptions** - visitors just talk. "Mhm" and "ok" don't derail it; real questions stop the
+  current action, get answered, and the demo resumes. Breathing and room noise don't count.
+- **Share or embed** - every presenter has a share link and a one-line widget for your own site.
+  [More](docs/embedding.md)
+- **Workspaces** - email/password or Google sign-in, teams with roles, session history with full
+  transcripts.
 
 ## How it works
 
@@ -51,166 +55,102 @@ and drafts the demo for you to approve once.
                                          └───────────────────────────────────────────────┘
 ```
 
-1. The owner creates a presenter in the **dashboard** - either by writing a goal, or by giving a
-   URL and demo login and letting the **researcher** draft the goal and preparation notes - and
-   shares its link once the draft is approved.
-2. A visitor opens the link and joins. The web app creates a private LiveKit room and dispatches
-   the **worker** with the presenter's brief.
-3. The worker provisions a **sandbox** - an isolated virtual desktop with a real, headful
-   Chromium - and publishes it as its screen share.
-4. The **director** (Claude with the computer-use toolset) sees screenshots, decides what to
-   show and say, and drives the sandbox. Tool calls run _while the response is still
-   streaming_, so speech and motion start early and overlap like a person talking while working.
-5. Every mouse and keyboard action is injected as genuine OS input through XTEST, shaped by the
-   **humanize** models. The cursor the audience sees is the real X cursor (arrow, hand, I-beam).
+1. The owner creates a presenter in the **dashboard** - by writing a goal, or by letting the
+   **researcher** draft it from a URL and a demo login - and shares its link.
+2. A visitor opens the link. The web app creates a private LiveKit room and dispatches the
+   **worker** with the presenter's brief.
+3. The worker starts a **sandbox** - an isolated virtual desktop with a real Chromium - and
+   publishes it as its screen share.
+4. The **director** (Claude with the computer-use toolset) sees screenshots, decides what to show
+   and say, and drives the sandbox. Tool calls run while the response is still streaming, so
+   speech and motion overlap like a person talking while working.
+5. Every mouse and keyboard action is real OS input through XTEST, shaped by the **humanize**
+   models. The cursor the audience sees is the real X cursor.
 
-## Repository layout
+Details: [architecture](docs/architecture.md).
 
-Every piece is a standalone package with its own README, tests and license, so each can be used
-(and open-sourced) on its own:
+## Quick start
 
-| Path                                         | Package              | What it is                                                                                                                                                 |
-| -------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`packages/humanize`](packages/humanize)     | `onboard-humanize`   | Pure-Python models of human pointing, gestures, typing and scrolling. Zero dependencies.                                                                   |
-| [`packages/sandbox`](packages/sandbox)       | `onboard-sandbox`    | Virtual desktop server (Xvfb + Chromium) with human-like XTEST input, screenshots and a live JPEG stream; async client; local/Docker/static provisioning.  |
-| [`packages/director`](packages/director)     | `onboard-director`   | The presenting loop: Claude computer use + narration, pointing, whiteboard sketching, secrets, listening and interruptions. Platform-agnostic.             |
-| [`packages/researcher`](packages/researcher) | `onboard-researcher` | Learns a product from a URL (docs research + hands-on exploration) and writes the demo playbook the director presents from. Library, CLI and HTTP service. |
-| [`apps/agent`](apps/agent)                   | `onboard-agent`      | LiveKit worker that glues it together: voice in/out, screen share, per-session sandbox.                                                                    |
-| [`apps/web`](apps/web)                       | `onboard-web`        | Next.js dashboard, public demo pages and the meeting room.                                                                                                 |
-
-## Quick start (local, Linux)
-
-Requirements: Python 3.10+, Node 22 + pnpm, Postgres 14+, `Xvfb` and Chromium (or Chrome), and accounts for
-[LiveKit](https://cloud.livekit.io), [Anthropic](https://console.anthropic.com),
+You need keys for [LiveKit](https://cloud.livekit.io), [Anthropic](https://console.anthropic.com),
 [Deepgram](https://deepgram.com) and [ElevenLabs](https://elevenlabs.io).
+
+### Docker compose
+
+```bash
+cp .env.example .env                   # fill in the keys
+docker compose --profile build build   # also builds the per-session sandbox image
+docker compose up -d
+```
+
+Open <http://localhost:3000/signup>, create an account, create a presenter ("Let AI prepare it"
+takes a URL and a demo login), approve the draft, then open its share link in another window and
+join.
+
+### Local development (Linux)
+
+Requirements: Python 3.10+, Node 22 + pnpm, Postgres 14+, `Xvfb` and Chromium.
 
 ```bash
 cp .env.example .env            # fill in the keys; SANDBOX_PROVIDER=local
 cp .env apps/web/.env.local
 
-# Python side
 python -m venv .venv && source .venv/bin/activate
 pip install -e packages/humanize -e "packages/sandbox[server]" -e packages/director \
             -e packages/researcher -e apps/agent
 onboard-agent download-files    # VAD model
-onboard-agent dev               # run the worker (reads .env)
-onboard-researcher serve        # (another terminal) drafts demos from a URL
+onboard-agent dev               # the worker (reads .env)
+onboard-researcher serve        # another terminal: drafts demos from a URL
 
-# Web side (another terminal). Any Postgres works; this one-liner is the quickest.
+# another terminal
 docker run -d --name onboard-db -p 5432:5432 -e POSTGRES_USER=onboard \
   -e POSTGRES_PASSWORD=onboard -e POSTGRES_DB=onboard postgres:17-alpine
 cd apps/web && pnpm install && pnpm dev   # applies migrations on start
 ```
 
-Open <http://localhost:3000/signup>, create your account (you get a personal workspace), create a
-presenter ("Let AI prepare it" takes a URL and a demo login; review and approve the draft), then open its share link in another browser window and join.
+On macOS, run the sandbox in Docker instead; see
+[getting started](docs/getting-started.md#local-development-on-macos). The `Makefile` wraps the
+common commands: `make help`.
 
-### Accounts and workspaces
+## Repository layout
 
-- Sign in with **email and password** or **Google** (shown when `GOOGLE_CLIENT_ID` and
-  `GOOGLE_CLIENT_SECRET` are set). Create an OAuth client of type _Web application_ in Google
-  Cloud and add `<BETTER_AUTH_URL>/api/auth/callback/google` as an authorized redirect URI.
-  Signing in with Google on an email that already has a password links the two.
-- Everything (presenters, sessions, transcripts) belongs to a **workspace**. Each user starts with
-  a personal one and can create more from the workspace switcher.
-- **Owners** and **admins** invite people by email (Settings → Invite people), change roles and
-  remove members; **members** create and edit presenters. Without an email provider the invite
-  link is shown to copy and printed to the server log; set `RESEND_API_KEY` and `EMAIL_FROM` to
-  send invitations and password-reset emails.
-- Upgrading from the JSON file store? `pnpm db:import-json --email you@company.com` copies your
-  presenters (and their share links) into your workspace.
+Every piece is a standalone package with its own README, tests and license:
 
-### Draft a demo from the command line
+| Path                                         | Package              | What it is                                                                                           |
+| -------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------- |
+| [`packages/humanize`](packages/humanize)     | `onboard-humanize`   | Pure-Python models of human pointing, gestures, typing and scrolling. Zero dependencies.             |
+| [`packages/sandbox`](packages/sandbox)       | `onboard-sandbox`    | Virtual desktop server (Xvfb + Chromium) with human-like XTEST input, screenshots and a live stream. |
+| [`packages/director`](packages/director)     | `onboard-director`   | The presenting loop: Claude computer use, narration, pointing, whiteboard, secrets, interruptions.   |
+| [`packages/researcher`](packages/researcher) | `onboard-researcher` | Learns a product from a URL and writes the demo playbook. Library, CLI and HTTP service.             |
+| [`apps/agent`](apps/agent)                   | `onboard-agent`      | LiveKit worker: voice in/out, screen share, per-session sandbox.                                     |
+| [`apps/web`](apps/web)                       | `onboard-web`        | Next.js dashboard, public demo pages, embed widget and the meeting room.                             |
+| [`scripts/probe_models.py`](scripts)         |                      | Checks whether another model can see screenshots and click accurately.                               |
+| [`docs/`](docs)                              |                      | Guides and reference.                                                                                |
 
-```bash
-onboard-researcher run --url https://app.example.com/login \
-    --secret username=demo@example.com --secret password=... \
-    --notes "Visitors are finance managers; focus on reporting"
-```
+## Documentation
 
-### Try the presenter without a meeting
+- [Getting started](docs/getting-started.md) - Docker compose, local development, first presenter
+- [Architecture](docs/architecture.md) - components, data flow, a session's lifecycle
+- [Configuration](docs/configuration.md) - every environment variable
+- [Writing good goals](docs/writing-good-goals.md) - demos, presentations, whiteboard, notes
+- [AI research](docs/ai-research.md) - how "Let AI prepare it" works
+- [Embedding](docs/embedding.md) - the website widget
+- [Models and providers](docs/models-and-providers.md) - Claude, other providers, cost
+- [Deployment](docs/deployment.md) - production, scaling, backups
+- [Troubleshooting and FAQ](docs/troubleshooting.md)
 
-The director has a terminal mode: speech is printed, and you can type to "interrupt" it. Watch the
-desktop at `<sandbox>/screenshot?cursor=1`.
+## Safety in brief
 
-```bash
-onboard-director --goal "Show how to search for a book and add it to the wishlist" \
-                 --url https://openlibrary.org
-onboard-director --mode presentation --whiteboard \
-                 --url "https://docs.google.com/presentation/d/<id>/edit" \
-                 --goal "Present this deck to new students and take questions"
-```
+Each session runs in its own disposable desktop. Demo secrets are encrypted at rest and never
+shown to the model or the browser. Dashboard data is scoped to a workspace. Nothing the AI drafts
+reaches visitors until you approve it. Use a dedicated demo account, and treat anything it can see
+as visible to visitors. Details and how to report a vulnerability: [SECURITY.md](SECURITY.md).
 
-## Deploy with Docker
+## Contributing
 
-```bash
-cp .env.example .env    # fill in keys; SANDBOX_PROVIDER is set to docker by compose
-docker compose --profile build build
-docker compose up -d
-```
-
-The worker starts one `onboard-sandbox` container per session on the `onboarding-ai` network and
-removes it when the call ends. Scale the `agent` service horizontally; LiveKit load-balances
-dispatches across workers.
-
-## Configuration
-
-| Variable                                                                                  | Used by                    | Purpose                                                                                             |
-| ----------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------- |
-| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`                                    | web, agent                 | Meetings                                                                                            |
-| `ANTHROPIC_API_KEY`                                                                       | agent                      | The director                                                                                        |
-| `DIRECTOR_MODEL` / `DIRECTOR_EFFORT`                                                      | agent                      | Model (default `claude-opus-5-5`) and effort (default `medium`, a latency trade-off for live calls) |
-| `DIRECTOR_BASE_URL`, `DIRECTOR_API_KEY`, `DIRECTOR_NATIVE`                                | agent                      | Run the presenter on another Anthropic-compatible provider (see below)                              |
-| `DEEPGRAM_API_KEY`, `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID`                                   | agent                      | Speech-to-text and voice                                                                            |
-| `DATABASE_URL`                                                                            | web                        | Postgres connection string (migrations run on start; `DATABASE_AUTO_MIGRATE=0` to opt out)          |
-| `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`                                                   | web                        | Session signing secret and the dashboard's public URL                                               |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                | web                        | Optional Google sign-in                                                                             |
-| `SECRETS_ENCRYPTION_KEY`                                                                  | web                        | 32-byte base64 key encrypting presenter secrets at rest (required in production)                    |
-| `RESEND_API_KEY`, `EMAIL_FROM`                                                            | web                        | Optional email for invitations and password resets                                                  |
-| `JOIN_LIMIT_PER_IP`, `JOIN_LIMIT_WINDOW_MINUTES`, `MAX_CONCURRENT_SESSIONS_PER_PRESENTER` | web                        | Abuse limits on public join links (defaults 6 per 10 min, 10 concurrent)                            |
-| `AGENT_CALLBACK_SECRET`                                                                   | web, agent, researcher     | Authenticates transcript/status/research reports                                                    |
-| `RESEARCHER_URL`, `RESEARCHER_TOKEN`                                                      | web, researcher            | Where the dashboard reaches the research service, and its shared token                              |
-| `RESEARCHER_MODEL` / `RESEARCHER_EFFORT`                                                  | researcher                 | Model (default `claude-opus-5-5`) and effort (default `high`) for research                          |
-| `SANDBOX_PROVIDER`                                                                        | agent, researcher          | `local`, `docker` or `static`                                                                       |
-| `SANDBOX_SIZE`                                                                            | agent, researcher, sandbox | Desktop resolution (default `1280x800`)                                                             |
-
-## Other models
-
-Claude on Anthropic's API is the default and gets the full feature set (native computer use,
-adaptive thinking, context editing, server-side web search). Any provider that serves the
-Anthropic Messages format can be used instead - set `DIRECTOR_MODEL` + `DIRECTOR_BASE_URL` +
-`DIRECTOR_API_KEY` (and the `RESEARCHER_*` equivalents). Non-Claude models get a **portable mode**:
-
-- a regular `computer` tool with the same actions and parameters as Claude's computer toolset,
-  executed by the same sandbox code;
-- screenshots sent as top-level content (many compatible endpoints ignore images inside tool
-  results) and pruned client-side to the last few;
-- JSON requested in the prompt instead of structured outputs, and docs read through a
-  client-side `fetch_page` tool (public addresses only) instead of server-side web search.
-
-The model must accept images and point accurately. Measure a model and endpoint before switching:
-
-```bash
-python scripts/probe_models.py --base-url <endpoint> --api-key-env <VAR> --models <model-id>
-```
-
-It reports whether images actually arrive (some gateways silently drop them), whether the native
-toolset is accepted, and click accuracy with the portable tool on a test screen.
-
-## Safety notes
-
-- Each session runs in its own disposable desktop. Nothing persists between visitors.
-- Dashboard data is scoped to a workspace on every query; members of one workspace can't read or
-  change another's presenters or sessions.
-- Secrets are encrypted at rest (AES-256-GCM), stored server-side, never sent to the model or the browser, and typed without
-  typos. Use a dedicated demo account.
-- The presenter is instructed to stay on the goal, avoid payment forms and destructive actions.
-  Treat the demo account as something a curious visitor could see.
-- Research explores in its own disposable desktop and is told to look, not change: forms are
-  opened and cancelled unless your hints allow creating sample data. Nothing the AI drafts reaches
-  visitors until you approve it. Keep the research service on a private network with
-  `RESEARCHER_TOKEN` set - its requests carry the demo credentials.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the setup and the checks CI
+runs (`make install`, then `make check`), and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE)

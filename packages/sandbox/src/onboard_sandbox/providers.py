@@ -118,12 +118,15 @@ class DockerProvider:
         host: str = "127.0.0.1",
         size: str = "1280x800",
         extra_args: list[str] | None = None,
+        idle_timeout: float = 600,
     ) -> None:
         self.image = image
         self.network = network
         self.host = host
         self.size = size
         self.extra_args = extra_args or []
+        # A container whose worker died without releasing it stops itself after this.
+        self.idle_timeout = idle_timeout
 
     async def _docker(self, *args: str) -> str:
         proc = await asyncio.create_subprocess_exec(
@@ -138,7 +141,8 @@ class DockerProvider:
         token = secrets.token_urlsafe(24)
         name = f"onboard-sandbox-{session_id}"[:63]
         args = ["run", "-d", "--rm", "--name", name, "--shm-size=1g",
-                "-e", f"SANDBOX_TOKEN={token}", "-e", f"SANDBOX_SIZE={self.size}"]
+                "-e", f"SANDBOX_TOKEN={token}", "-e", f"SANDBOX_SIZE={self.size}",
+                "-e", f"SANDBOX_IDLE_TIMEOUT={self.idle_timeout:g}"]
         if start_url:
             args += ["-e", f"SANDBOX_START_URL={start_url}"]
         if self.network:
@@ -186,6 +190,7 @@ def provider_from_env() -> SandboxProvider:
             os.environ.get("SANDBOX_IMAGE", "onboard-sandbox:latest"),
             network=os.environ.get("SANDBOX_DOCKER_NETWORK") or None,
             size=size,
+            idle_timeout=float(os.environ.get("SANDBOX_IDLE_TIMEOUT", "600")),
         )
     if kind == "local":
         return LocalProcessProvider(size=size)

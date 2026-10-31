@@ -69,6 +69,14 @@ def _voice_session(voice: dict, listening: ListeningConfig) -> AgentSession:
     )
 
 
+async def _bounded(step, seconds: float, what: str) -> None:
+    """Run one shutdown step without letting it hang or raise."""
+    try:
+        await asyncio.wait_for(step, seconds)
+    except Exception as e:  # noqa: BLE001 - shutdown must carry on
+        logger.warning("could not %s: %r", what, e)
+
+
 def _human_participants(room: rtc.Room) -> list[rtc.RemoteParticipant]:
     return [
         p for p in room.remote_participants.values() if p.kind != rtc.ParticipantKind.PARTICIPANT_KIND_AGENT
@@ -90,12 +98,15 @@ async def entrypoint(ctx: JobContext) -> None:
     share: ScreenShare | None = None
 
     async def cleanup(reason: str = "") -> None:
-        if share:
-            await share.stop()
-        await sandbox.close()
-        await lease.release()
+        # LiveKit kills the job process a few seconds into shutdown, so report the end
+        # first, free the sandbox (a whole desktop, possibly signed in) next, and bound
+        # every step that talks to a room that may already be gone.
         reporter.emit("status", {"state": "ended", "reason": reason})
-        await reporter.close()
+        if share:
+            await _bounded(share.stop(), 2, "stop the screen share")
+        await _bounded(sandbox.close(), 1, "close the sandbox client")
+        await _bounded(lease.release(), 5, "release the sandbox")
+        await reporter.close(timeout=2)
 
     ctx.add_shutdown_callback(cleanup)
 

@@ -122,3 +122,38 @@ def test_html_is_reduced_to_text_and_links():
     assert parser.title == "Acme Docs"
     assert "# Reports" in parser.text() and "Build a report." in parser.text() and "evil" not in parser.text()
     assert parser.links == ["https://acme.dev/pricing"]
+
+
+def _rejected(status=400, code="request_rejected"):
+    import anthropic
+
+    # Built without __init__: the SDK's HTTP response type differs between versions.
+    cls = anthropic.BadRequestError if status == 400 else anthropic.InternalServerError
+    error = cls.__new__(cls)
+    Exception.__init__(error, f"Error code: {status} - {{'error': {{'code': '{code}'}}}}")
+    return error
+
+
+async def test_transient_gateway_errors_are_retried(monkeypatch):
+    from onboard_researcher import llm
+
+    monkeypatch.setattr(llm, "RETRY_DELAY", 0)
+    client = FakeClient([_rejected(), _rejected(500), message([text("ok")])])
+    msg = await llm.stream_message(client, {"model": "m", "max_tokens": 10, "messages": []}, native=False)
+    assert msg.content[0].text == "ok"
+    assert len(client.requests) == 3
+
+
+async def test_real_bad_requests_are_not_retried(monkeypatch):
+    import anthropic
+
+    from onboard_researcher import llm
+
+    monkeypatch.setattr(llm, "RETRY_DELAY", 0)
+    client = FakeClient([_rejected(code="invalid_param"), message([text("never")])])
+    with pytest.raises(anthropic.BadRequestError):
+        await llm.stream_message(client, {"model": "m", "max_tokens": 10, "messages": []}, native=False)
+    # On Anthropic's own API a 400 is always a real error.
+    client = FakeClient([_rejected(), message([text("never")])])
+    with pytest.raises(anthropic.BadRequestError):
+        await llm.stream_message(client, {"model": "m", "max_tokens": 10, "messages": []}, native=True)

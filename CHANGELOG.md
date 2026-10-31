@@ -6,40 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Added
+## [0.1.0] - 2026-10-31
 
-- Community files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1),
-  `SECURITY.md`, issue and pull request templates, `.editorconfig`.
-- `docs/` with guides for getting started, architecture, configuration, writing goals, AI
-  research, embedding, models and providers, deployment and troubleshooting.
-- Root `Makefile` wrapping the CI, development and Docker compose commands.
-- Root `.dockerignore`: builds no longer send `node_modules`, `.next`, `.venv` or `.git` to the
-  Docker daemon, and local `.env` files can't end up in image layers.
-
-- `SANDBOX_IDLE_TIMEOUT`: a sandbox with no requests or viewers for that long stops itself
-  (Docker sandboxes default to 10 minutes), so a worker that dies can't leak one.
-
-### Changed
-
-- README reorganised for newcomers; reference material moved into `docs/`.
-- `.gitignore` ignores `.env.*` backups (keeping `.env.example` files), `.windsurf/`, and media
-  under `media/` and `recordings/`.
-
-### Fixed
-
-- Sessions now end cleanly: the worker reports "ended" first and bounds every shutdown step.
-  Before, LiveKit killed the job mid-cleanup, so the dashboard showed finished sessions as live
-  and the sandbox container (possibly still signed in to the demo account) kept running.
-- The sandbox browser no longer shows "Save password?", autofill or "Sign in to Chromium?"
-  prompts, which put the demo username on the shared screen.
-- The researcher retries passing model outages (connection errors, 429, 5xx, and the
-  `request_rejected` 400 some compatible gateways return) instead of skipping a phase, and keeps
-  what exploration found when it fails partway.
-
-## [0.1.0] - 2026-10-17
-
-First version of Onboarding AI as a goal-driven live presenter. The repository started as a fork
-of LiveKit's Meet example; that code was replaced in this release.
+First version of Onboarding AI as a goal-driven live presenter, and its first public release. The
+repository started as a fork of LiveKit's Meet example; that code was replaced in this release. The
+[release page](https://github.com/saifulbabo67646/onboarding-ai/releases/tag/v0.1.0) has a demo
+video made from real recordings of it.
 
 ### Added
 
@@ -77,6 +49,21 @@ of LiveKit's Meet example; that code was replaced in this release.
 - Docker compose stack (web, Postgres, worker, researcher, sandbox image) and CI for the web app
   and the Python packages.
 - `pnpm db:import-json` to move presenters from the earlier JSON file store into a workspace.
+- Community files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1),
+  `SECURITY.md`, issue and pull request templates, `.editorconfig`.
+- `docs/` with guides for getting started, architecture, configuration, writing goals, AI
+  research, embedding, models and providers, deployment and troubleshooting.
+- Root `Makefile` wrapping the CI, development and Docker compose commands.
+- Root `.dockerignore`: builds no longer send `node_modules`, `.next`, `.venv` or `.git` to the
+  Docker daemon, and local `.env` files can't end up in image layers.
+- `SANDBOX_IDLE_TIMEOUT`: a sandbox with no requests or viewers for that long stops itself
+  (Docker sandboxes default to 10 minutes), so a worker that dies can't leak one.
+
+### Changed
+
+- README reorganised for newcomers; reference material moved into `docs/`.
+- `.gitignore` ignores `.env.*` backups (keeping `.env.example` files), `.windsurf/`, and media
+  under `media/` and `recordings/`.
 
 ### Security
 
@@ -88,6 +75,14 @@ of LiveKit's Meet example; that code was replaced in this release.
 ### Fixed
 
 - Demo room crash when the first live caption arrived.
+- Sessions now end cleanly: the worker reports "ended" first and bounds every shutdown step.
+  Before, LiveKit killed the job mid-cleanup, so the dashboard showed finished sessions as live
+  and the sandbox container (possibly still signed in to the demo account) kept running.
+- The sandbox browser no longer shows "Save password?", autofill or "Sign in to Chromium?"
+  prompts, which put the demo username on the shared screen.
+- The researcher retries passing model outages (connection errors, 429, 5xx, and the
+  `request_rejected` 400 some compatible gateways return) instead of skipping a phase, and keeps
+  what exploration found when it fails partway.
 
-[Unreleased]: https://github.com/saifulbabo67646/onboarding-ai/compare/759a934...HEAD
-[0.1.0]: https://github.com/saifulbabo67646/onboarding-ai/tree/759a934
+[Unreleased]: https://github.com/saifulbabo67646/onboarding-ai/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/saifulbabo67646/onboarding-ai/releases/tag/v0.1.0

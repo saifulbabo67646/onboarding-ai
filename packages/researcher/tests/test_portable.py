@@ -157,3 +157,23 @@ async def test_real_bad_requests_are_not_retried(monkeypatch):
     client = FakeClient([_rejected(), message([text("never")])])
     with pytest.raises(anthropic.BadRequestError):
         await llm.stream_message(client, {"model": "m", "max_tokens": 10, "messages": []}, native=True)
+
+
+async def test_explorer_keeps_findings_when_the_model_fails_midway(monkeypatch):
+    from onboard_researcher import llm
+
+    monkeypatch.setattr(llm, "RETRY_DELAY", 0)
+    note = {"category": "navigation", "title": "Reports", "detail": "Under Insights", "location": "Sidebar"}
+    client = FakeClient([message([tool_use("t1", "note", note)], "tool_use"), *[_rejected()] * (llm.RETRIES + 1)])
+    result = await AppExplorer(request(), FakeComputer(), client=client, config=PORTABLE).explore()
+    assert [o.title for o in result.observations] == ["Reports"]
+    assert "request_rejected" in result.stopped_early
+
+
+async def test_explorer_still_fails_when_nothing_was_found(monkeypatch):
+    from onboard_researcher import llm
+
+    monkeypatch.setattr(llm, "RETRY_DELAY", 0)
+    client = FakeClient([_rejected()] * (llm.RETRIES + 1))
+    with pytest.raises(Exception, match="request_rejected"):
+        await AppExplorer(request(), FakeComputer(), client=client, config=PORTABLE).explore()

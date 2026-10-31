@@ -102,6 +102,8 @@ class Observation:
 class Exploration:
     observations: list[Observation] = field(default_factory=list)
     summary: str = ""
+    # Why exploring ended before the model finished, when it did; what was found is kept.
+    stopped_early: str | None = None
 
     def render(self) -> str:
         if not self.observations:
@@ -170,6 +172,21 @@ class AppExplorer:
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": [{"type": "text", "text": self._opening(docs_notes)}, *await self.screen.blocks()]}
         ]
+        try:
+            await self._loop(messages)
+        except Exception as e:
+            if not self.result.observations:
+                raise
+            # Minutes of findings are worth more than a clean failure.
+            logger.warning("exploration stopped early, keeping %s findings: %s", len(self.result.observations), e)
+            self.result.stopped_early = str(e)
+        self.on_event(
+            "progress",
+            {"phase": "explore", "message": f"Finished exploring ({len(self.result.observations)} findings)"},
+        )
+        return self.result
+
+    async def _loop(self, messages: list[dict[str, Any]]) -> None:
         started = time.monotonic()
         time_warned = False
         idle_turns = 0
@@ -198,11 +215,6 @@ class AppExplorer:
             messages.append({"role": "user", "content": await self._run_tools(tool_uses)})
             if self._finished:
                 break
-        self.on_event(
-            "progress",
-            {"phase": "explore", "message": f"Finished exploring ({len(self.result.observations)} findings)"},
-        )
-        return self.result
 
     def _params(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         return request_params(

@@ -87,6 +87,13 @@ class Researcher:
                     exploration = await self._explore(docs)
                 except Exception as e:  # noqa: BLE001
                     warnings.append(self._warn("explore", f"Could not explore the app: {e}"))
+                else:
+                    if exploration.stopped_early:
+                        warnings.append(self._warn(
+                            "explore",
+                            f"Exploring stopped early; the draft uses the {len(exploration.observations)} findings "
+                            f"made before that: {exploration.stopped_early}",
+                        ))
 
         self._status("write")
         self.on_event("progress", {"phase": "write", "message": "Writing the demo playbook"})

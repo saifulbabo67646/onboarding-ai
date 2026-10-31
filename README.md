@@ -2,9 +2,11 @@
 
 **Live product demos and presentations, given by an AI presenter that feels like a person.**
 
-**[▶ Watch the 4-minute demo](https://github.com/saifulbabo67646/onboarding-ai/releases/download/v0.1.0/onboarding-ai-demo.mp4)**.
-It researches a real app, presents it live, takes a question mid-demo, presents slides and
-sketches on a whiteboard. All real footage.
+https://github.com/user-attachments/assets/9064df34-06b9-416c-98bc-a5b2fd86e37c
+
+It researches a real app, presents it live, takes a question mid-demo, and sketches on a
+whiteboard. All real footage. This is the 80-second cut;
+[watch the full 4-minute demo](https://github.com/saifulbabo67646/onboarding-ai/releases/download/v0.1.0/onboarding-ai-demo.mp4).
 
 You give a presenter a **goal** ("demo our analytics dashboard to a prospect: log in, explain the
 KPIs, build a report for last month and share it"). When someone opens the share link, the

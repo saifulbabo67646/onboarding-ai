@@ -125,6 +125,7 @@ Read by the worker and the researcher when they need a desktop.
 | `SANDBOX_TOKEN`          | unset                    | `static` only: its bearer token, if it has one.                                                                  |
 | `SANDBOX_IMAGE`          | `onboard-sandbox:latest` | `docker` only: image to run.                                                                                     |
 | `SANDBOX_DOCKER_NETWORK` | unset                    | `docker` only: network to attach containers to. Unset publishes a random port on `127.0.0.1`.                    |
+| `SANDBOX_IDLE_TIMEOUT`   | `600`                    | `docker` only: seconds a container may go without requests or viewers before it stops itself.                    |
 
 ## Sandbox server
 
@@ -142,6 +143,7 @@ Read by `onboard-sandbox` itself (each also has a command-line flag; see
 | `SANDBOX_MOUSE_SPEED`          | `1.0`                    | Mouse speed multiplier.                                                                                      |
 | `SANDBOX_WPM`                  | `70`                     | Typing speed.                                                                                                |
 | `SANDBOX_TYPO_RATE`            | `0.015`                  | Share of keystrokes that become a corrected typo.                                                            |
+| `SANDBOX_IDLE_TIMEOUT`         | `0` (never)              | Exit after this many seconds without requests or stream viewers, so an abandoned sandbox cleans itself up.   |
 | `CHROME_PATH`                  | auto                     | Chromium binary. Otherwise `chromium`, `chromium-browser`, `google-chrome` or a Playwright download is used. |
 | `PLAYWRIGHT_BROWSERS_PATH`     | `~/.cache/ms-playwright` | Where to look for a Playwright Chromium.                                                                     |
 | `CHROME_NO_SANDBOX`            | unset                    | `1` starts Chromium with `--no-sandbox` (also automatic as root). The sandbox image sets it.                 |

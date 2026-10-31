@@ -56,6 +56,23 @@ system, messages, plain tools). In particular:
 The model must accept images and point accurately. Many don't, or a gateway drops images
 silently, so measure before switching.
 
+### Example: research on DeepSeek
+
+This is the setup the project's own demo video was recorded with: research on DeepSeek's
+official Anthropic-compatible API, live demos on Claude.
+
+```bash
+RESEARCHER_MODEL=deepseek-flash
+RESEARCHER_BASE_URL=https://api.deepseek.com/anthropic
+RESEARCHER_API_KEY=<your DeepSeek key>
+```
+
+`deepseek-flash` accepts screenshots; `deepseek-v4-pro` replaces images with a placeholder, so it
+can read docs but not explore the app. Third-party gateways in front of the same models may
+reject image requests for minutes at a time with a bare `request_rejected` error. The researcher
+retries those, and if exploring still fails partway it keeps what it found so far and says so in
+the draft's warnings.
+
 ## Checking a model with `probe_models.py`
 
 ```bash

@@ -16,11 +16,25 @@ All notable changes to this project are documented here. The format is based on
 - Root `.dockerignore`: builds no longer send `node_modules`, `.next`, `.venv` or `.git` to the
   Docker daemon, and local `.env` files can't end up in image layers.
 
+- `SANDBOX_IDLE_TIMEOUT`: a sandbox with no requests or viewers for that long stops itself
+  (Docker sandboxes default to 10 minutes), so a worker that dies can't leak one.
+
 ### Changed
 
 - README reorganised for newcomers; reference material moved into `docs/`.
 - `.gitignore` ignores `.env.*` backups (keeping `.env.example` files), `.windsurf/`, and media
   under `media/` and `recordings/`.
+
+### Fixed
+
+- Sessions now end cleanly: the worker reports "ended" first and bounds every shutdown step.
+  Before, LiveKit killed the job mid-cleanup, so the dashboard showed finished sessions as live
+  and the sandbox container (possibly still signed in to the demo account) kept running.
+- The sandbox browser no longer shows "Save password?", autofill or "Sign in to Chromium?"
+  prompts, which put the demo username on the shared screen.
+- The researcher retries passing model outages (connection errors, 429, 5xx, and the
+  `request_rejected` 400 some compatible gateways return) instead of skipping a phase, and keeps
+  what exploration found when it fails partway.
 
 ## [0.1.0] - 2026-10-17
 

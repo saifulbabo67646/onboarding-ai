@@ -1,0 +1,70 @@
+name: Bug report
+description: Something doesn't work as documented.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please check [troubleshooting](https://github.com/saifulbabo67646/onboarding-ai/blob/main/docs/troubleshooting.md) first.
+        **Security issues:** don't file them here. Report them privately as described in [SECURITY.md](https://github.com/saifulbabo67646/onboarding-ai/blob/main/SECURITY.md).
+        Never paste API keys, `.env` contents, demo passwords or customer data.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Dashboard / web app (apps/web)
+        - Presenter worker (apps/agent)
+        - Director (packages/director)
+        - Researcher (packages/researcher)
+        - Sandbox (packages/sandbox)
+        - Humanize (packages/humanize)
+        - Docker / deployment
+        - Docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a presenter with ...
+        2. Join the share link ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output from `docker compose logs web agent researcher`, the browser console, or the session's error events. Remove secrets first.
+      render: text
+  - type: dropdown
+    id: setup
+    attributes:
+      label: How you run it
+      options:
+        - Docker compose
+        - Local development (Linux)
+        - Local development (macOS)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      description: Output of `git rev-parse --short HEAD`.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker version, Python and Node versions, LiveKit Cloud or self-hosted, and the model (`DIRECTOR_MODEL` / `RESEARCHER_MODEL`, and whether you use a custom base URL).

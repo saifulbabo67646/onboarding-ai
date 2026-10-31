@@ -14,6 +14,19 @@ next-env.d.ts.bak
 .env
 .env.local
 .env.*.local
+# backups like .env.backup-old; templates stay tracked
+.env.*
+!.env.example
+!**/.env.example
+
+# editors and tools
+.windsurf/
+
+# demo videos and session recordings
+media/**/*.mp4
+media/**/*.webm
+recordings/**/*.mp4
+recordings/**/*.webm
 
 # python
 __pycache__/

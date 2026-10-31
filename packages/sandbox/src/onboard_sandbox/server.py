@@ -18,7 +18,8 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 from aiohttp import WSMsgType, web
 
@@ -36,11 +37,29 @@ class Sandbox:
     capture: ScreenCapture
     input: HumanInput
     stream: FrameStream
+    activity: "Activity" = field(default_factory=lambda: Activity())
 
 
-def _auth_middleware(token: str | None):
+class Activity:
+    """When the sandbox was last used, so an abandoned one can shut itself down."""
+
+    def __init__(self) -> None:
+        self.last = time.monotonic()
+        self.streams = 0
+
+    def touch(self) -> None:
+        self.last = time.monotonic()
+
+    def idle_for(self) -> float:
+        """Seconds without a request; an open frame stream counts as use."""
+        return 0.0 if self.streams else time.monotonic() - self.last
+
+
+def _auth_middleware(token: str | None, activity: Activity):
     @web.middleware
     async def middleware(request: web.Request, handler):
+        if request.path != "/health":
+            activity.touch()
         if token and request.path != "/health":
             header = request.headers.get("Authorization", "")
             supplied = header[7:] if header.startswith("Bearer ") else request.query.get("token", "")
@@ -52,7 +71,7 @@ def _auth_middleware(token: str | None):
 
 
 def create_app(sandbox: Sandbox, *, token: str | None = None) -> web.Application:
-    app = web.Application(middlewares=[_auth_middleware(token)], client_max_size=4 * 1024 * 1024)
+    app = web.Application(middlewares=[_auth_middleware(token, sandbox.activity)], client_max_size=4 * 1024 * 1024)
     routes = web.RouteTableDef()
 
     @routes.get("/health")
@@ -120,6 +139,7 @@ def create_app(sandbox: Sandbox, *, token: str | None = None) -> web.Application
         ws = web.WebSocketResponse(heartbeat=20, max_msg_size=0)
         await ws.prepare(request)
         sandbox.stream.subscribe()
+        sandbox.activity.streams += 1
         seq = -1
         try:
             reader = asyncio.create_task(_drain(ws))
@@ -131,6 +151,8 @@ def create_app(sandbox: Sandbox, *, token: str | None = None) -> web.Application
             pass
         finally:
             sandbox.stream.unsubscribe()
+            sandbox.activity.streams -= 1
+            sandbox.activity.touch()
         return ws
 
     app.add_routes(routes)

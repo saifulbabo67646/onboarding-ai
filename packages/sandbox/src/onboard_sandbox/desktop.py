@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import glob
+import json
 import logging
 import os
 import shutil
@@ -139,6 +140,7 @@ class Browser:
             "--hide-crash-restore-bubble",
             "--disable-features=Translate,MediaRouter,OptimizationHints,PrivacySandboxSettings4",
             "--password-store=basic",
+            "--disable-sync",
             "--disable-dev-shm-usage",
             "--force-device-scale-factor=1",
             "--window-position=0,0",
@@ -154,10 +156,29 @@ class Browser:
             args.append("--no-sandbox")
         return args + self.extra_args
 
+    def _write_preferences(self) -> None:
+        """Turn off what would show credentials or nag on screen: the "Save password?"
+        and autofill prompts (they display the demo username) and sign-in bubbles."""
+        path = os.path.join(self.profile_dir, "Default", "Preferences")
+        if os.path.exists(path):
+            return
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        prefs = {
+            "credentials_enable_service": False,
+            "credentials_enable_autosignin": False,
+            "profile": {"password_manager_enabled": False},
+            "autofill": {"profile_enabled": False, "credit_card_enabled": False},
+            "signin": {"allowed": False},
+        }
+        with open(path, "w") as f:
+            json.dump(prefs, f)
+
     async def open(self, url: str | None = None) -> None:
         """Launch the browser, or open ``url`` in a new tab if already running."""
         if not self.executable:
             raise RuntimeError("Chromium not found; set CHROME_PATH")
+        if not self.running:
+            self._write_preferences()
         env = {
             **self.display.env,
             # Silences Chromium's "Google API keys are missing" info bar.

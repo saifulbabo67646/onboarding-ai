@@ -2,8 +2,8 @@
 # sandbox container, started by the worker through the Docker socket.
 #
 #   cp .env.example .env    # fill in the keys
-#   docker compose build    # also builds the sandbox image
-#   docker compose up
+#   docker compose --profile build build    # the profile also builds the sandbox image
+#   docker compose up -d
 #
 # Then open http://localhost:3000/signup to create the first account.
 

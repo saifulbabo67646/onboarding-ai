@@ -30,11 +30,12 @@ class EventReporter:
         if self.url:
             self._queue.put_nowait({"type": kind, "data": data, "ts": time.time()})
 
-    async def close(self) -> None:
+    async def close(self, timeout: float = 10) -> None:
+        """Flush what is queued, for at most ``timeout`` seconds."""
         if self._task:
             self._queue.put_nowait(None)
             try:
-                await asyncio.wait_for(self._task, 10)
+                await asyncio.wait_for(self._task, timeout)
             except asyncio.TimeoutError:
                 self._task.cancel()
 

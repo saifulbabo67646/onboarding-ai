@@ -4,17 +4,22 @@ defaults, ``pause_turn`` continuation and structured outputs.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass
 from typing import Any
 
+import anthropic
 from anthropic import AsyncAnthropic
 from onboard_director import ModelBackend
 from onboard_director.backend import open_stream
 
 Message = Any  # anthropic BetaMessage; kept loose so fakes work in tests.
+
+logger = logging.getLogger("onboard.researcher")
 
 
 class ResearchError(Exception):
@@ -120,9 +125,33 @@ async def stream_message(client: AsyncAnthropic, params: dict[str, Any], *, nati
     """One streamed request (large ``max_tokens`` needs streaming), returning the final message.
 
     Portable backends get the request reduced to fields every compatible endpoint accepts.
+    Research runs unattended for many minutes, so a passing outage is waited out
+    instead of costing a whole phase.
     """
-    async with open_stream(client, params, native=native) as stream:
-        return await stream.get_final_message()
+    for attempt in range(RETRIES + 1):
+        try:
+            async with open_stream(client, params, native=native) as stream:
+                return await stream.get_final_message()
+        except Exception as e:
+            if attempt == RETRIES or not _transient(e, native=native):
+                raise
+            logger.warning("model request failed (attempt %s), retrying: %s", attempt + 1, e)
+            await asyncio.sleep(RETRY_DELAY * 2**attempt)
+    raise AssertionError("unreachable")
+
+
+RETRIES = 4
+RETRY_DELAY = 5.0
+
+
+def _transient(error: Exception, *, native: bool) -> bool:
+    if isinstance(error, (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.InternalServerError)):
+        return True
+    # Gateways for other models sometimes reject a valid request for a while
+    # ("request_rejected", with no detail) when their upstream routes are down.
+    if not native and isinstance(error, anthropic.BadRequestError):
+        return "request_rejected" in str(error)
+    return False
 
 
 def check_stop(message: Message, phase: str) -> None:

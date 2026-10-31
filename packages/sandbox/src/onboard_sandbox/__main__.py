@@ -42,7 +42,8 @@ async def serve(args: argparse.Namespace) -> None:
     backend.move(args.size[0] * 2 // 3, args.size[1] // 2)
     human.set_idle(True)
     stream = FrameStream(capture, fps=args.fps)
-    app = create_app(Sandbox(display, browser, capture, human, stream), token=args.token)
+    sandbox = Sandbox(display, browser, capture, human, stream)
+    app = create_app(sandbox, token=args.token)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -54,12 +55,25 @@ async def serve(args: argparse.Namespace) -> None:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
+    watchdog = asyncio.create_task(_exit_when_idle(sandbox.activity, args.idle_timeout, stop))
     await stop.wait()
+    watchdog.cancel()
     await runner.cleanup()
     backend.close()
     if browser:
         await browser.stop()
     await display.stop()
+
+
+async def _exit_when_idle(activity, timeout: float, stop: asyncio.Event) -> None:
+    """Stop an abandoned sandbox (e.g. its worker died before releasing it)."""
+    if timeout <= 0:
+        return
+    while not stop.is_set():
+        await asyncio.sleep(min(30.0, timeout / 4))
+        if activity.idle_for() > timeout:
+            logging.getLogger("onboard.sandbox").warning("no requests for %.0fs, shutting down", timeout)
+            stop.set()
 
 
 def main() -> None:
@@ -76,6 +90,8 @@ def main() -> None:
     p.add_argument("--fps", type=float, default=float(env("SANDBOX_FPS", "20")))
     p.add_argument("--mouse-speed", type=float, default=float(env("SANDBOX_MOUSE_SPEED", "1.0")))
     p.add_argument("--wpm", type=float, default=float(env("SANDBOX_WPM", "70")))
+    p.add_argument("--idle-timeout", type=float, default=float(env("SANDBOX_IDLE_TIMEOUT", "0")),
+                   help="exit after this many seconds without requests or viewers (0 = never)")
     p.add_argument("--typo-rate", type=float, default=float(env("SANDBOX_TYPO_RATE", "0.015")))
     args = p.parse_args()
     logging.basicConfig(level=env("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
